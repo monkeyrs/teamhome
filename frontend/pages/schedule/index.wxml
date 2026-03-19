@@ -65,9 +65,9 @@
           class="swipe-content"
           data-index="{{index}}"
           style="transform: translateX({{item.offsetX}}px);"
-          catchtouchstart="onSwipeStart"
-          catchtouchmove="onSwipeMove"
-          catchtouchend="onSwipeEnd"
+          bindtouchstart="onSwipeStart"
+          bindtouchmove="onSwipeMove"
+          bindtouchend="onSwipeEnd"
         >
           <view class="card schedule-card">
             <view class="title">{{item.title || "未命名日程"}}</view>

@@ -4,6 +4,8 @@ const { bootstrapSession, getCurrentTeamState } = require("../../utils/bootstrap
 const DELETE_BUTTON_WIDTH = 88;
 const HARD_DELETE_THRESHOLD = 160;
 const MAX_SWIPE = 220;
+const SWIPE_LAZINESS = 54;
+const DIRECTION_LOCK_THRESHOLD = 12;
 
 Page({
   data: {
@@ -23,7 +25,9 @@ Page({
       placeLongitude: null,
       note: ""
     },
-    swipeStartX: 0
+    swipeStartX: 0,
+    swipeStartY: 0,
+    swipeDirection: ""
   },
 
   async onShow() {
@@ -158,14 +162,31 @@ Page({
   },
 
   onSwipeStart(event) {
-    this.setData({ swipeStartX: event.changedTouches[0].clientX });
+    this.setData({
+      swipeStartX: event.changedTouches[0].clientX,
+      swipeStartY: event.changedTouches[0].clientY,
+      swipeDirection: ""
+    });
   },
 
   onSwipeMove(event) {
     const currentX = event.changedTouches[0].clientX;
+    const currentY = event.changedTouches[0].clientY;
     const deltaX = currentX - this.data.swipeStartX;
+    const deltaY = currentY - this.data.swipeStartY;
     const index = Number(event.currentTarget.dataset.index);
     if (Number.isNaN(index)) return;
+    let direction = this.data.swipeDirection;
+    if (!direction) {
+      if (Math.abs(deltaX) < DIRECTION_LOCK_THRESHOLD && Math.abs(deltaY) < DIRECTION_LOCK_THRESHOLD) {
+        return;
+      }
+      direction = Math.abs(deltaY) >= Math.abs(deltaX) ? "vertical" : "horizontal";
+      this.setData({ swipeDirection: direction });
+    }
+    if (direction !== "horizontal") {
+      return;
+    }
     const records = this.data.records.slice();
     records.forEach((item, itemIndex) => {
       if (itemIndex !== index) {
@@ -173,7 +194,15 @@ Page({
         item.deleteWidth = 0;
       }
     });
-    const offsetX = deltaX < 0 ? Math.max(deltaX, -MAX_SWIPE) : 0;
+    const horizontalDistance = Math.abs(deltaX);
+    if (horizontalDistance <= SWIPE_LAZINESS) {
+      records[index].offsetX = 0;
+      records[index].deleteWidth = 0;
+      this.setData({ records });
+      return;
+    }
+    const effectiveDeltaX = deltaX + SWIPE_LAZINESS;
+    const offsetX = effectiveDeltaX < 0 ? Math.max(effectiveDeltaX, -MAX_SWIPE) : 0;
     records[index].offsetX = offsetX;
     records[index].deleteWidth = Math.min(Math.abs(offsetX), MAX_SWIPE);
     this.setData({ records });
@@ -185,14 +214,21 @@ Page({
     const records = this.data.records.slice();
     const current = records[index];
     if (!current) return;
+    if (this.data.swipeDirection !== "horizontal") {
+      current.offsetX = 0;
+      current.deleteWidth = 0;
+      this.setData({ records, swipeDirection: "" });
+      return;
+    }
     if (Math.abs(current.offsetX) >= HARD_DELETE_THRESHOLD) {
       await this.deleteRecordByIndex(index);
+      this.setData({ swipeDirection: "" });
       return;
     }
     const shouldOpen = Math.abs(current.offsetX) >= DELETE_BUTTON_WIDTH / 2;
     current.offsetX = shouldOpen ? -DELETE_BUTTON_WIDTH : 0;
     current.deleteWidth = shouldOpen ? DELETE_BUTTON_WIDTH : 0;
-    this.setData({ records });
+    this.setData({ records, swipeDirection: "" });
   },
 
   async onTapDelete(event) {
