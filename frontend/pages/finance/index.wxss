@@ -37,6 +37,42 @@
   color: #666666;
 }
 
+.type-toggle {
+  display: flex;
+  gap: 16rpx;
+}
+
+.type-option {
+  flex: 1;
+  height: 88rpx;
+  line-height: 88rpx;
+  text-align: center;
+  border-radius: 12rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  border: 2rpx solid transparent;
+}
+
+.type-expense {
+  background: #fff1f0;
+  color: #fa5151;
+}
+
+.type-income {
+  background: #e8f7ef;
+  color: #07c160;
+}
+
+.type-option-active.type-expense {
+  border-color: #fa5151;
+  box-shadow: 0 0 0 2rpx rgba(250, 81, 81, 0.12);
+}
+
+.type-option-active.type-income {
+  border-color: #07c160;
+  box-shadow: 0 0 0 2rpx rgba(7, 193, 96, 0.12);
+}
+
 .location-btn {
   margin-top: 0;
 }

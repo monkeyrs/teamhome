@@ -9,6 +9,8 @@ Page({
     teamIndex: 0,
     teamName: "",
     teamPanelOpen: false,
+    profileDialogOpen: false,
+    nicknameDraft: "",
     question: "",
     loading: false,
     recording: false,
@@ -47,11 +49,14 @@ Page({
     this.setData({ loading: true });
     try {
       const { teamId, teams } = await bootstrapSession();
+      const user = getApp().globalData.user || {};
       const teamIndex = Math.max(0, teams.findIndex((item) => item.id === teamId));
       this.setData({
         teams,
         teamIndex: teamIndex < 0 ? 0 : teamIndex,
-        teamPanelOpen: teams.length === 0
+        teamPanelOpen: teams.length === 0,
+        profileDialogOpen: !user.nickname || user.nickname === "微信用户",
+        nicknameDraft: user.nickname && user.nickname !== "微信用户" ? user.nickname : ""
       });
     } catch (err) {
       wx.showToast({ title: "初始化失败", icon: "none" });
@@ -82,6 +87,31 @@ Page({
 
   onQuestionInput(event) {
     this.setData({ question: event.detail.value });
+  },
+
+  onNicknameInput(event) {
+    this.setData({ nicknameDraft: event.detail.value });
+  },
+
+  async saveNickname() {
+    const nickname = (this.data.nicknameDraft || "").trim();
+    if (!nickname) {
+      wx.showToast({ title: "请输入昵称", icon: "none" });
+      return;
+    }
+    try {
+      const user = await request({
+        path: "/auth/me",
+        method: "PUT",
+        data: { nickname }
+      });
+      getApp().globalData.user = user;
+      wx.setStorageSync("user", user);
+      this.setData({ profileDialogOpen: false, nicknameDraft: user.nickname || "" });
+      wx.showToast({ title: "昵称已保存", icon: "success" });
+    } catch (err) {
+      wx.showToast({ title: "保存昵称失败", icon: "none" });
+    }
   },
 
   async refreshTeams() {

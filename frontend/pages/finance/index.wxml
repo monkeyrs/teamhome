@@ -12,9 +12,10 @@
   <view class="card">
     <view class="section-title">新增费用</view>
     <input class="input-control form-gap" type="digit" placeholder="金额" value="{{form.amount}}" bindinput="onInputAmount" />
-    <picker mode="selector" range="{{['支出', '收入']}}" value="{{form.type === 'income' ? 1 : 0}}" bindchange="onTypeChange">
-      <view class="picker form-gap">{{form.type === 'income' ? '收入' : '支出'}}</view>
-    </picker>
+    <view class="type-toggle form-gap">
+      <view class="type-option type-expense {{form.type === 'expense' ? 'type-option-active' : ''}}" data-type="expense" bindtap="onTypeChange">支出</view>
+      <view class="type-option type-income {{form.type === 'income' ? 'type-option-active' : ''}}" data-type="income" bindtap="onTypeChange">收入</view>
+    </view>
     <input class="input-control form-gap" placeholder="分类" value="{{form.category}}" bindinput="onInputCategory" />
 
     <view class="field-label">地点（选填）</view>

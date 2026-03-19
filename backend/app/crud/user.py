@@ -32,3 +32,14 @@ def get_or_create_user_by_openid(
     db.commit()
     db.refresh(user)
     return user
+
+
+def update_user_profile(db: Session, *, user: User, nickname: str | None = None, avatar: str | None = None) -> User:
+    if nickname is not None:
+        user.nickname = nickname.strip()
+    if avatar is not None:
+        user.avatar = avatar
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user

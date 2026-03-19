@@ -25,7 +25,7 @@ async function loginIfNeeded(forceRefresh = false) {
     withAuth: false,
     data: {
       code,
-      nickname: "wx-user"
+      nickname: "微信用户"
     }
   });
   setToken(loginRes.token || "");

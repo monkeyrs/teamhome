@@ -19,3 +19,7 @@ class AuthLoginIn(BaseModel):
 class AuthLoginOut(BaseModel):
     token: str
     user: UserOut
+
+
+class UserProfileUpdateIn(BaseModel):
+    nickname: str = Field(..., min_length=1, max_length=20)

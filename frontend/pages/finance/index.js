@@ -112,8 +112,9 @@ Page({
   },
 
   onTypeChange(event) {
-    const index = Number(event.detail.value || 0);
-    this.setData({ "form.type": index === 1 ? "income" : "expense" });
+    const type = event.currentTarget.dataset.type;
+    if (!type) return;
+    this.setData({ "form.type": type });
   },
 
   async createRecord() {

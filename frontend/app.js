@@ -1,6 +1,7 @@
-App({
+﻿App({
   globalData: {
-    apiBaseUrl: "http://127.0.0.1:8000",
+    //apiBaseUrl: "http://127.0.0.1:8000", //local
+    apiBaseUrl: "http://YOUR_SERVER_IP:8000", //live
     token: "",
     currentTeamId: "",
     teams: [],

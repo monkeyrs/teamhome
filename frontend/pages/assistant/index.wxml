@@ -1,3 +1,12 @@
+<view class="page-overlay" wx:if="{{profileDialogOpen}}">
+  <view class="overlay-card">
+    <view class="overlay-title">设置显示昵称</view>
+    <view class="overlay-text">这个昵称会显示在团队内的日程和费用记录上。</view>
+    <input class="input-control" maxlength="20" placeholder="请输入昵称" value="{{nicknameDraft}}" bindinput="onNicknameInput" />
+    <button class="btn-primary" bindtap="saveNickname">保存昵称</button>
+  </view>
+</view>
+
 <view class="card compact-card">
   <view class="team-compact" bindtap="toggleTeamPanel">
     <view class="team-name">{{teams.length ? teams[teamIndex].name : "请选择团队"}}</view>
