@@ -1,0 +1,37 @@
+{
+  "pages": [
+    "pages/schedule/index",
+    "pages/finance/index",
+    "pages/assistant/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "TeamHome",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f7f7f7",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "color": "#7a7e83",
+    "selectedColor": "#07c160",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/schedule/index",
+        "text": "Schedule"
+      },
+      {
+        "pagePath": "pages/finance/index",
+        "text": "Finance"
+      },
+      {
+        "pagePath": "pages/assistant/index",
+        "text": "Assistant"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

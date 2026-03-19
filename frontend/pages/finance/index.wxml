@@ -1,0 +1,40 @@
+<view class="card">
+  <view class="section-title">Team</view>
+  <picker mode="selector" range="{{teams}}" range-key="name" value="{{teamIndex}}" bindchange="onTeamChange">
+    <view class="picker">{{teams.length ? teams[teamIndex].name : "No Team"}}</view>
+  </picker>
+</view>
+
+<finance-chart records="{{records}}" />
+
+<view class="card">
+  <view class="section-title">Natural Language</view>
+  <textarea class="textarea-control" placeholder="e.g. Lunch cost 35" value="{{nlText}}" bindinput="onInputNL" />
+  <button class="btn-primary" bindtap="parseNL">Parse Finance</button>
+</view>
+
+<view class="card">
+  <view class="section-title">Create Record</view>
+  <input class="input-control form-gap" type="digit" placeholder="Amount" value="{{form.amount}}" bindinput="onInputAmount" />
+  <picker mode="selector" range="{{['expense','income']}}" value="{{form.type === 'income' ? 1 : 0}}" bindchange="onTypeChange">
+    <view class="picker form-gap">{{form.type}}</view>
+  </picker>
+  <input class="input-control form-gap" placeholder="Category" value="{{form.category}}" bindinput="onInputCategory" />
+  <input class="input-control" placeholder="Note" value="{{form.note}}" bindinput="onInputNote" />
+  <button class="btn-primary" bindtap="createRecord">Create</button>
+</view>
+
+<view class="list-title">Finance Records</view>
+<block wx:if="{{records.length}}">
+  <block wx:for="{{records}}" wx:key="id">
+    <view class="card record-card">
+      <view class="record-top">
+        <view class="record-category">{{item.category}}</view>
+        <view class="record-amount {{item.type}}">{{item.type === 'income' ? '+' : '-'}}{{item.amount}}</view>
+      </view>
+      <view class="muted">{{item.note || "-"}}</view>
+      <view class="muted small">{{item.created_at}}</view>
+    </view>
+  </block>
+</block>
+<view wx:else class="card muted">No records</view>

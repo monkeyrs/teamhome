@@ -1,0 +1,1 @@
+"""TeamHome backend application package."""

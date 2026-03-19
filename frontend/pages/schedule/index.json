@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "Schedule",
+  "usingComponents": {
+    "schedule-card": "/components/schedule-card/index"
+  }
+}

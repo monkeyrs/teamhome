@@ -1,0 +1,23 @@
+<view class="card">
+  <view class="section-title">Team</view>
+  <picker mode="selector" range="{{teams}}" range-key="name" value="{{teamIndex}}" bindchange="onTeamChange">
+    <view class="picker">{{teams.length ? teams[teamIndex].name : "No Team"}}</view>
+  </picker>
+</view>
+
+<view class="card">
+  <view class="section-title">Ask Finance Assistant</view>
+  <textarea
+    class="textarea-control"
+    placeholder="e.g. How much did we spend on food last month?"
+    value="{{question}}"
+    bindinput="onQuestionInput"
+  />
+  <button class="btn-primary" loading="{{loading}}" bindtap="askAssistant">Ask</button>
+</view>
+
+<view class="card" wx:if="{{answer}}">
+  <view class="section-title">Answer</view>
+  <view>{{answer}}</view>
+  <view class="muted answer-data">{{answerDataText}}</view>
+</view>

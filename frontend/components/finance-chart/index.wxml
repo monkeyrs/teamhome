@@ -1,0 +1,15 @@
+<view class="card">
+  <view class="header">Expense by Category</view>
+  <block wx:if="{{bars.length}}">
+    <block wx:for="{{bars}}" wx:key="name">
+      <view class="line">
+        <view class="label">{{item.name}}</view>
+        <view class="bar-wrap">
+          <view class="bar" style="width: {{item.width}};"></view>
+        </view>
+        <view class="amount">{{item.amountText}}</view>
+      </view>
+    </block>
+  </block>
+  <view wx:else class="muted">No expense records yet.</view>
+</view>

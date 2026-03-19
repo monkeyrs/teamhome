@@ -1,0 +1,33 @@
+.form-gap {
+  margin-bottom: 12rpx;
+}
+
+.record-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8rpx;
+}
+
+.record-category {
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.record-amount {
+  font-size: 30rpx;
+  font-weight: 700;
+}
+
+.record-amount.expense {
+  color: #fa5151;
+}
+
+.record-amount.income {
+  color: #07c160;
+}
+
+.small {
+  font-size: 22rpx;
+  margin-top: 8rpx;
+}

@@ -1,0 +1,34 @@
+<view class="card">
+  <view class="section-title">Team</view>
+  <picker mode="selector" range="{{teams}}" range-key="name" value="{{teamIndex}}" bindchange="onTeamChange">
+    <view class="picker">{{teams.length ? teams[teamIndex].name : "No Team"}}</view>
+  </picker>
+</view>
+
+<view class="card">
+  <view class="section-title">Natural Language</view>
+  <textarea
+    class="textarea-control"
+    placeholder="e.g. Meeting tomorrow at 15:00"
+    value="{{nlText}}"
+    bindinput="onInputNL"
+  />
+  <button class="btn-primary" bindtap="parseNL">Parse Schedule</button>
+</view>
+
+<view class="card">
+  <view class="section-title">Create Schedule</view>
+  <input class="input-control form-gap" placeholder="Title" value="{{form.title}}" bindinput="onInputTitle" />
+  <input class="input-control form-gap" placeholder="Description" value="{{form.description}}" bindinput="onInputDescription" />
+  <input class="input-control form-gap" placeholder="Start (ISO, e.g. 2026-03-20T15:00:00+08:00)" value="{{form.start_time}}" bindinput="onInputStart" />
+  <input class="input-control" placeholder="End (optional ISO)" value="{{form.end_time}}" bindinput="onInputEnd" />
+  <button class="btn-primary" bindtap="createSchedule">Create</button>
+</view>
+
+<view class="list-title">Schedule List</view>
+<block wx:if="{{schedules.length}}">
+  <block wx:for="{{schedules}}" wx:key="id">
+    <schedule-card item="{{item}}" />
+  </block>
+</block>
+<view wx:else class="card muted">No schedules</view>

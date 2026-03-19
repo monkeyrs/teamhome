@@ -1,0 +1,5 @@
+.answer-data {
+  margin-top: 16rpx;
+  word-break: break-all;
+  font-size: 24rpx;
+}

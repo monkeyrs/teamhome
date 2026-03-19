@@ -1,0 +1,6 @@
+<view class="card schedule-card">
+  <view class="title">{{display.title}}</view>
+  <view class="row muted">Start: {{display.startTime}}</view>
+  <view class="row muted">End: {{display.endTime}}</view>
+  <view class="status status-{{display.status}}">{{display.status}}</view>
+</view>
