@@ -1,6 +1,6 @@
 {
-  "navigationBarTitleText": "Finance",
+  "navigationBarTitleText": "费用",
   "usingComponents": {
-    "finance-chart": "/components/finance-chart/index"
+    "finance-chart": "../../components/finance-chart/index"
   }
 }

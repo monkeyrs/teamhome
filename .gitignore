@@ -1,5 +1,6 @@
 # local secrets
 backend/.env
+backend/.run/
 
 # python artifacts
 __pycache__/
@@ -8,4 +9,3 @@ __pycache__/
 *.pyd
 .pytest_cache/
 .venv/
-

@@ -1,11 +1,13 @@
 services:
   api:
     build: .
+    env_file:
+      - backend/.env
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+psycopg2://admin:admin@db:5432/teamhome
-      JWT_SECRET: dev-secret-change-me
+    restart: unless-stopped
     depends_on:
       - db
 
@@ -15,5 +17,6 @@ services:
       POSTGRES_DB: teamhome
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin
+    restart: unless-stopped
     ports:
       - "5432:5432"

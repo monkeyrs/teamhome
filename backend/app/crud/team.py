@@ -17,6 +17,18 @@ def create_team(db: Session, *, name: str, owner_id: uuid.UUID) -> Team:
     return team
 
 
+def get_team_by_name(db: Session, *, name: str) -> Team | None:
+    return db.query(Team).filter(Team.name == name).first()
+
+
+def add_team_member(db: Session, *, team_id: uuid.UUID, user_id: uuid.UUID, role: str = "member") -> TeamMember:
+    membership = TeamMember(team_id=team_id, user_id=user_id, role=role)
+    db.add(membership)
+    db.commit()
+    db.refresh(membership)
+    return membership
+
+
 def get_team(db: Session, team_id: uuid.UUID) -> Team | None:
     return db.query(Team).filter(Team.id == team_id).first()
 
@@ -38,3 +50,12 @@ def is_team_member(db: Session, *, team_id: uuid.UUID, user_id: uuid.UUID) -> bo
         .first()
         is not None
     )
+
+
+def get_team_member(db: Session, *, team_id: uuid.UUID, user_id: uuid.UUID) -> TeamMember | None:
+    return db.query(TeamMember).filter(TeamMember.team_id == team_id, TeamMember.user_id == user_id).first()
+
+
+def remove_team_member(db: Session, *, membership: TeamMember) -> None:
+    db.delete(membership)
+    db.commit()

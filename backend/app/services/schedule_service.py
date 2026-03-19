@@ -14,6 +14,8 @@ def create_schedule_from_schema(
         team_id=payload.team_id,
         title=payload.title,
         description=payload.description,
+        location=payload.location,
+        is_all_day=payload.is_all_day,
         start_time=payload.start_time,
         end_time=payload.end_time,
         created_by=created_by,

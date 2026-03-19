@@ -1,8 +1,8 @@
 {
   "pages": [
+    "pages/assistant/index",
     "pages/schedule/index",
-    "pages/finance/index",
-    "pages/assistant/index"
+    "pages/finance/index"
   ],
   "window": {
     "navigationBarTitleText": "TeamHome",
@@ -11,6 +11,11 @@
     "backgroundColor": "#f7f7f7",
     "backgroundTextStyle": "dark"
   },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于地图选点记录活动和费用地点"
+    }
+  },
   "tabBar": {
     "color": "#7a7e83",
     "selectedColor": "#07c160",
@@ -18,16 +23,16 @@
     "borderStyle": "white",
     "list": [
       {
+        "pagePath": "pages/assistant/index",
+        "text": "助手"
+      },
+      {
         "pagePath": "pages/schedule/index",
-        "text": "Schedule"
+        "text": "日程"
       },
       {
         "pagePath": "pages/finance/index",
-        "text": "Finance"
-      },
-      {
-        "pagePath": "pages/assistant/index",
-        "text": "Assistant"
+        "text": "费用"
       }
     ]
   },

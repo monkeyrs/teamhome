@@ -1,40 +1,62 @@
-<view class="card">
-  <view class="section-title">Team</view>
-  <picker mode="selector" range="{{teams}}" range-key="name" value="{{teamIndex}}" bindchange="onTeamChange">
-    <view class="picker">{{teams.length ? teams[teamIndex].name : "No Team"}}</view>
-  </picker>
+<view class="page-overlay" wx:if="{{teamReady && !hasTeam}}">
+  <view class="overlay-card">
+    <view class="overlay-title">还没有团队</view>
+    <view class="overlay-text">请先到助手页创建或加入团队。</view>
+    <button class="btn-primary" bindtap="goAssistantPage">去助手页</button>
+  </view>
 </view>
 
-<finance-chart records="{{records}}" />
+<view wx:if="{{hasTeam}}">
+  <finance-chart records="{{records}}" />
 
-<view class="card">
-  <view class="section-title">Natural Language</view>
-  <textarea class="textarea-control" placeholder="e.g. Lunch cost 35" value="{{nlText}}" bindinput="onInputNL" />
-  <button class="btn-primary" bindtap="parseNL">Parse Finance</button>
-</view>
+  <view class="card">
+    <view class="section-title">新增费用</view>
+    <input class="input-control form-gap" type="digit" placeholder="金额" value="{{form.amount}}" bindinput="onInputAmount" />
+    <picker mode="selector" range="{{['支出', '收入']}}" value="{{form.type === 'income' ? 1 : 0}}" bindchange="onTypeChange">
+      <view class="picker form-gap">{{form.type === 'income' ? '收入' : '支出'}}</view>
+    </picker>
+    <input class="input-control form-gap" placeholder="分类" value="{{form.category}}" bindinput="onInputCategory" />
 
-<view class="card">
-  <view class="section-title">Create Record</view>
-  <input class="input-control form-gap" type="digit" placeholder="Amount" value="{{form.amount}}" bindinput="onInputAmount" />
-  <picker mode="selector" range="{{['expense','income']}}" value="{{form.type === 'income' ? 1 : 0}}" bindchange="onTypeChange">
-    <view class="picker form-gap">{{form.type}}</view>
-  </picker>
-  <input class="input-control form-gap" placeholder="Category" value="{{form.category}}" bindinput="onInputCategory" />
-  <input class="input-control" placeholder="Note" value="{{form.note}}" bindinput="onInputNote" />
-  <button class="btn-primary" bindtap="createRecord">Create</button>
-</view>
-
-<view class="list-title">Finance Records</view>
-<block wx:if="{{records.length}}">
-  <block wx:for="{{records}}" wx:key="id">
-    <view class="card record-card">
-      <view class="record-top">
-        <view class="record-category">{{item.category}}</view>
-        <view class="record-amount {{item.type}}">{{item.type === 'income' ? '+' : '-'}}{{item.amount}}</view>
-      </view>
-      <view class="muted">{{item.note || "-"}}</view>
-      <view class="muted small">{{item.created_at}}</view>
+    <view class="field-label">地点（选填）</view>
+    <button class="btn-secondary location-btn" bindtap="chooseLocation">地图选点</button>
+    <view class="location-preview" wx:if="{{form.placeName}}">
+      <view>{{form.placeName}}</view>
+      <view class="muted small-text">GPS：{{form.placeLatitude}}, {{form.placeLongitude}}</view>
+      <view class="location-clear" bindtap="clearLocation">清空地点</view>
     </view>
+
+    <input class="input-control" placeholder="备注" value="{{form.note}}" bindinput="onInputNote" />
+    <button class="btn-primary" bindtap="createRecord">创建记录</button>
+  </view>
+
+  <view class="list-title">费用记录</view>
+  <block wx:if="{{records.length}}">
+    <block wx:for="{{records}}" wx:key="id">
+      <view class="swipe-row">
+        <view class="delete-bg" style="width: {{item.deleteWidth}}px;">
+          <view class="delete-action" data-index="{{index}}" bindtap="onTapDelete">删除</view>
+        </view>
+        <view
+          class="swipe-content"
+          data-index="{{index}}"
+          style="transform: translateX({{item.offsetX}}px);"
+          catchtouchstart="onSwipeStart"
+          catchtouchmove="onSwipeMove"
+          catchtouchend="onSwipeEnd"
+        >
+          <view class="card record-card">
+            <view class="record-top">
+              <view class="record-category">{{item.category}}</view>
+              <view class="record-amount {{item.type}}">{{item.amountText}}</view>
+            </view>
+            <view class="muted">创建人：{{item.creatorName}}</view>
+            <view class="muted">地点：{{item.locationText}}</view>
+            <view class="muted">{{item.note || "无备注"}}</view>
+            <view class="muted small">{{item.createdText}}</view>
+          </view>
+        </view>
+      </view>
+    </block>
   </block>
-</block>
-<view wx:else class="card muted">No records</view>
+  <view wx:else class="card muted">暂无费用记录</view>
+</view>

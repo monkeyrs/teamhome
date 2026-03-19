@@ -1,6 +1,6 @@
-import uuid
-
 import decimal
+import datetime as dt
+import uuid
 
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,9 @@ def create_finance_record(
     amount: decimal.Decimal,
     record_type: str,
     category: str,
+    location: str | None,
+    location_latitude: float | None,
+    location_longitude: float | None,
     note: str | None,
 ) -> FinanceRecord:
     record = FinanceRecord(
@@ -23,6 +26,9 @@ def create_finance_record(
         amount=amount,
         type=record_type,
         category=category,
+        location=location,
+        location_latitude=location_latitude,
+        location_longitude=location_longitude,
         note=note,
     )
     db.add(record)
@@ -34,7 +40,18 @@ def create_finance_record(
 def list_finance_records(db: Session, *, team_id: uuid.UUID) -> list[FinanceRecord]:
     return (
         db.query(FinanceRecord)
-        .filter(FinanceRecord.team_id == team_id)
+        .filter(FinanceRecord.team_id == team_id, FinanceRecord.deleted_at.is_(None))
         .order_by(FinanceRecord.created_at.desc())
         .all()
     )
+
+
+def get_finance_record(db: Session, *, record_id: uuid.UUID) -> FinanceRecord | None:
+    return db.query(FinanceRecord).filter(FinanceRecord.id == record_id).first()
+
+
+def soft_delete_finance_record(db: Session, *, record: FinanceRecord, batch_id: uuid.UUID) -> None:
+    record.deleted_at = dt.datetime.now(dt.timezone.utc)
+    record.deleted_batch_id = batch_id
+    db.add(record)
+    db.commit()

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.database import engine
+from app.core.schema_sync import ensure_dev_schema
 
 
 def create_app() -> FastAPI:
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
         @app.on_event("startup")
         def _create_tables() -> None:
             Base.metadata.create_all(bind=engine)
+            ensure_dev_schema(engine)
 
     return app
 

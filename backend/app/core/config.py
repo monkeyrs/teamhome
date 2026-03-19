@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = None
     OPENAI_BASE_URL: str | None = None
     OPENAI_MODEL: str = "gpt-4.1-mini"
+    OPENAI_AUDIO_MODEL: str = "gpt-4o-mini-transcribe"
 
 
 @lru_cache

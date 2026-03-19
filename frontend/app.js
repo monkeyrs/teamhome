@@ -8,8 +8,11 @@ App({
   },
   onLaunch() {
     const token = wx.getStorageSync("token") || "";
-    const currentTeamId = wx.getStorageSync("currentTeamId") || "";
+    const user = wx.getStorageSync("user") || null;
     this.globalData.token = token;
-    this.globalData.currentTeamId = currentTeamId;
+    this.globalData.user = user;
+    if (user && user.id) {
+      this.globalData.currentTeamId = wx.getStorageSync(`currentTeamId:${user.id}`) || "";
+    }
   }
 });

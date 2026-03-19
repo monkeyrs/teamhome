@@ -1,5 +1,5 @@
 <view class="card">
-  <view class="header">Expense by Category</view>
+  <view class="header">支出分类</view>
   <block wx:if="{{bars.length}}">
     <block wx:for="{{bars}}" wx:key="name">
       <view class="line">
@@ -11,5 +11,5 @@
       </view>
     </block>
   </block>
-  <view wx:else class="muted">No expense records yet.</view>
+  <view wx:else class="muted">暂无支出记录</view>
 </view>

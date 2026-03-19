@@ -1,6 +1,3 @@
 {
-  "navigationBarTitleText": "Schedule",
-  "usingComponents": {
-    "schedule-card": "/components/schedule-card/index"
-  }
+  "navigationBarTitleText": "日程"
 }

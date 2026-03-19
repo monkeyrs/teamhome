@@ -1,34 +1,85 @@
-<view class="card">
-  <view class="section-title">Team</view>
-  <picker mode="selector" range="{{teams}}" range-key="name" value="{{teamIndex}}" bindchange="onTeamChange">
-    <view class="picker">{{teams.length ? teams[teamIndex].name : "No Team"}}</view>
-  </picker>
+<view class="page-overlay" wx:if="{{teamReady && !hasTeam}}">
+  <view class="overlay-card">
+    <view class="overlay-title">还没有团队</view>
+    <view class="overlay-text">请先到助手页创建或加入团队。</view>
+    <button class="btn-primary" bindtap="goAssistantPage">去助手页</button>
+  </view>
 </view>
 
-<view class="card">
-  <view class="section-title">Natural Language</view>
-  <textarea
-    class="textarea-control"
-    placeholder="e.g. Meeting tomorrow at 15:00"
-    value="{{nlText}}"
-    bindinput="onInputNL"
-  />
-  <button class="btn-primary" bindtap="parseNL">Parse Schedule</button>
-</view>
+<view wx:if="{{hasTeam}}">
+  <view class="card">
+    <view class="section-title">新增日程</view>
+    <input class="input-control form-gap" placeholder="标题" value="{{form.title}}" bindinput="onInputTitle" />
+    <input class="input-control form-gap" placeholder="备注" value="{{form.description}}" bindinput="onInputDescription" />
 
-<view class="card">
-  <view class="section-title">Create Schedule</view>
-  <input class="input-control form-gap" placeholder="Title" value="{{form.title}}" bindinput="onInputTitle" />
-  <input class="input-control form-gap" placeholder="Description" value="{{form.description}}" bindinput="onInputDescription" />
-  <input class="input-control form-gap" placeholder="Start (ISO, e.g. 2026-03-20T15:00:00+08:00)" value="{{form.start_time}}" bindinput="onInputStart" />
-  <input class="input-control" placeholder="End (optional ISO)" value="{{form.end_time}}" bindinput="onInputEnd" />
-  <button class="btn-primary" bindtap="createSchedule">Create</button>
-</view>
+    <view class="field-label">地点（选填）</view>
+    <button class="btn-secondary location-btn" bindtap="chooseLocation">地图选点</button>
+    <view class="location-preview" wx:if="{{form.placeName}}">
+      <view>{{form.placeName}}</view>
+      <view class="muted small-text">GPS：{{form.placeLatitude}}, {{form.placeLongitude}}</view>
+      <view class="location-clear" bindtap="clearLocation">清空地点</view>
+    </view>
 
-<view class="list-title">Schedule List</view>
-<block wx:if="{{schedules.length}}">
-  <block wx:for="{{schedules}}" wx:key="id">
-    <schedule-card item="{{item}}" />
+    <checkbox-group bindchange="onToggleAllDay">
+      <label class="checkbox-line">
+        <checkbox value="allDay" checked="{{form.is_all_day}}" color="#07c160" />
+        <text>全天</text>
+      </label>
+    </checkbox-group>
+
+    <view class="field-label">开始日期</view>
+    <picker mode="date" value="{{form.date}}" bindchange="onDateChange">
+      <view class="picker form-gap">{{form.date || "请选择日期"}}</view>
+    </picker>
+
+    <view wx:if="{{!form.is_all_day}}">
+      <view class="field-label">开始时间</view>
+      <picker mode="time" value="{{form.start_clock}}" bindchange="onTimeChange">
+        <view class="picker form-gap">{{form.start_clock}}</view>
+      </picker>
+    </view>
+
+    <view class="field-label">结束日期</view>
+    <picker mode="date" value="{{form.end_date}}" bindchange="onEndDateChange">
+      <view class="picker form-gap">{{form.end_date || "请选择日期"}}</view>
+    </picker>
+
+    <view wx:if="{{!form.is_all_day}}">
+      <view class="field-label">结束时间</view>
+      <picker mode="time" value="{{form.end_clock}}" bindchange="onEndTimeChange">
+        <view class="picker">{{form.end_clock}}</view>
+      </picker>
+    </view>
+
+    <button class="btn-primary" bindtap="createSchedule">创建日程</button>
+  </view>
+
+  <view class="list-title">日程列表</view>
+  <block wx:if="{{schedules.length}}">
+    <block wx:for="{{schedules}}" wx:key="id">
+      <view class="swipe-row">
+        <view class="delete-bg" style="width: {{item.deleteWidth}}px;">
+          <view class="delete-action" data-index="{{index}}" bindtap="onTapDelete">删除</view>
+        </view>
+        <view
+          class="swipe-content"
+          data-index="{{index}}"
+          style="transform: translateX({{item.offsetX}}px);"
+          catchtouchstart="onSwipeStart"
+          catchtouchmove="onSwipeMove"
+          catchtouchend="onSwipeEnd"
+        >
+          <view class="card schedule-card">
+            <view class="title">{{item.title || "未命名日程"}}</view>
+            <view class="row muted">创建人：{{item.creatorName}}</view>
+            <view class="row muted">开始：{{item.startText}}</view>
+            <view class="row muted">结束：{{item.endText}}</view>
+            <view class="row muted">地点：{{item.locationText}}</view>
+            <view class="status status-{{item.status || 'pending'}}">{{item.statusText}}</view>
+          </view>
+        </view>
+      </view>
+    </block>
   </block>
-</block>
-<view wx:else class="card muted">No schedules</view>
+  <view wx:else class="card muted">暂无日程</view>
+</view>

@@ -1,8 +1,8 @@
-const { request, setToken, setCurrentTeamId } = require("./request");
+const { request, setToken, setCurrentUser, clearToken, setCurrentTeamId } = require("./request");
 
-async function loginIfNeeded() {
+async function loginIfNeeded(forceRefresh = false) {
   const app = getApp();
-  if (app.globalData.token) return app.globalData.token;
+  if (!forceRefresh && app.globalData.token && app.globalData.user) return app.globalData.token;
 
   const code = await new Promise((resolve, reject) => {
     wx.login({
@@ -29,22 +29,28 @@ async function loginIfNeeded() {
     }
   });
   setToken(loginRes.token || "");
-  getApp().globalData.user = loginRes.user || null;
+  setCurrentUser(loginRes.user || null);
   return loginRes.token || "";
 }
 
 async function ensureTeam() {
   const app = getApp();
-  const teams = await request({ path: "/teams", method: "GET" });
+  let teams;
+  try {
+    teams = await request({ path: "/teams", method: "GET" });
+  } catch (err) {
+    if (err && err.statusCode === 401) {
+      clearToken();
+      await loginIfNeeded(true);
+      teams = await request({ path: "/teams", method: "GET" });
+    } else {
+      throw err;
+    }
+  }
   app.globalData.teams = teams || [];
-
   if (app.globalData.teams.length === 0) {
-    const created = await request({
-      path: "/teams",
-      method: "POST",
-      data: { name: "My Team" }
-    });
-    app.globalData.teams = [created];
+    setCurrentTeamId("");
+    return { teamId: "", teams: [] };
   }
 
   const validCurrent = app.globalData.teams.find((item) => item.id === app.globalData.currentTeamId);
@@ -52,7 +58,8 @@ async function ensureTeam() {
   setCurrentTeamId(teamId);
   return {
     teamId,
-    teams: app.globalData.teams
+    teams: app.globalData.teams,
+    user: app.globalData.user || null
   };
 }
 
@@ -61,6 +68,16 @@ async function bootstrapSession() {
   return ensureTeam();
 }
 
+function getCurrentTeamState() {
+  const app = getApp();
+  return {
+    teamId: app.globalData.currentTeamId || "",
+    teams: app.globalData.teams || [],
+    user: app.globalData.user || null
+  };
+}
+
 module.exports = {
-  bootstrapSession
+  bootstrapSession,
+  getCurrentTeamState
 };

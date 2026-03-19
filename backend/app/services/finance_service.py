@@ -14,5 +14,6 @@ def create_finance_from_schema(db: Session, *, payload: FinanceCreate, user_id: 
         amount=payload.amount,
         record_type=payload.type,
         category=payload.category,
+        location=payload.location,
         note=payload.note,
     )
