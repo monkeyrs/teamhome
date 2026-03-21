@@ -7,9 +7,9 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.crud.change_batch import create_change_batch, prune_old_batches
 from app.crud.place import touch_place
-from app.crud.schedule import create_schedule, get_schedule, list_schedules, soft_delete_schedule
+from app.crud.schedule import create_schedule, get_schedule, list_schedules, soft_delete_schedule, update_schedule
 from app.crud.team import is_team_member
-from app.schemas.schedule import ScheduleCreate, ScheduleOut, ScheduleParseIn, ScheduleParseOut
+from app.schemas.schedule import ScheduleCreate, ScheduleOut, ScheduleParseIn, ScheduleParseOut, ScheduleUpdate
 from app.services.llm.parser import parse_schedule_text
 
 router = APIRouter()
@@ -93,3 +93,31 @@ def delete_schedule_route(
     batch = create_change_batch(db, team_id=schedule.team_id, user_id=current_user.id, action="delete", entity_type="schedule")
     soft_delete_schedule(db, schedule=schedule, batch_id=batch.id)
     prune_old_batches(db, team_id=schedule.team_id, user_id=current_user.id, keep=3)
+
+
+@router.put("/{schedule_id}")
+def update_schedule_route(
+    schedule_id: uuid.UUID,
+    payload: ScheduleUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> ScheduleOut:
+    schedule = get_schedule(db, schedule_id=schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Schedule not found")
+    if not is_team_member(db, team_id=schedule.team_id, user_id=current_user.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a team member")
+    schedule = update_schedule(
+        db,
+        schedule=schedule,
+        title=payload.title,
+        description=payload.description,
+        location=payload.location,
+        location_latitude=payload.location_latitude,
+        location_longitude=payload.location_longitude,
+        is_all_day=payload.is_all_day,
+        start_time=payload.start_time,
+        end_time=payload.end_time,
+    )
+    touch_place(db, team_id=schedule.team_id, name=payload.location or "")
+    return to_schedule_out(schedule)

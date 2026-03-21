@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import datetime as dt
-import re
+import decimal
 import uuid
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.finance import FinanceRecord
+from app.services.llm.openrouter import get_llm_client
 
 
 def _month_range(base: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
@@ -17,12 +18,18 @@ def _month_range(base: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
     return prev_first, first
 
 
-def answer_finance_question(db: Session, *, team_id: uuid.UUID, question: str) -> dict:
+def _decimal_to_str(value: decimal.Decimal | None) -> str:
+    if value is None:
+        return "0.00"
+    return format(value.quantize(decimal.Decimal("0.01")), "f")
+
+
+def _fallback_answer(db: Session, *, team_id: uuid.UUID, question: str) -> dict:
     q = (question or "").strip()
     if not q:
         return {"answer": "问题为空", "data": None}
 
-    if "上个月" in q and ("餐饮" in q or "吃" in q or "饭" in q):
+    if "上个月" in q and any(word in q for word in ["餐饮", "吃", "饭"]):
         start, end = _month_range(dt.datetime.now().astimezone())
         total = (
             db.query(func.coalesce(func.sum(FinanceRecord.amount), 0))
@@ -31,18 +38,109 @@ def answer_finance_question(db: Session, *, team_id: uuid.UUID, question: str) -
                 FinanceRecord.type == "expense",
                 FinanceRecord.created_at >= start,
                 FinanceRecord.created_at < end,
-                FinanceRecord.category.in_(["food", "餐饮", "food"]),
+                FinanceRecord.category.in_(["food", "餐饮"]),
             )
             .scalar()
         )
-        return {"answer": f"上个月餐饮支出合计 {total}", "data": {"total": str(total), "start": start.isoformat(), "end": end.isoformat()}}
+        return {
+            "answer": f"上个月餐饮支出合计 {_decimal_to_str(total)} 元",
+            "data": {"total": _decimal_to_str(total), "start": start.isoformat(), "end": end.isoformat()},
+        }
 
-    if re.search(r"总(共)?花(了)?多少", q):
-        total = (
-            db.query(func.coalesce(func.sum(FinanceRecord.amount), 0))
-            .filter(FinanceRecord.team_id == team_id, FinanceRecord.type == "expense")
-            .scalar()
+    total = (
+        db.query(func.coalesce(func.sum(FinanceRecord.amount), 0))
+        .filter(FinanceRecord.team_id == team_id, FinanceRecord.type == "expense")
+        .scalar()
+    )
+    return {
+        "answer": f"当前总支出 {_decimal_to_str(total)} 元。你也可以继续问我按分类、时间段或成员汇总的问题。",
+        "data": {"total_expense": _decimal_to_str(total)},
+    }
+
+
+def _build_finance_snapshot(db: Session, *, team_id: uuid.UUID) -> dict:
+    records = (
+        db.query(FinanceRecord)
+        .filter(FinanceRecord.team_id == team_id, FinanceRecord.deleted_at.is_(None))
+        .order_by(FinanceRecord.created_at.desc())
+        .limit(50)
+        .all()
+    )
+
+    total_expense = decimal.Decimal("0")
+    total_income = decimal.Decimal("0")
+    by_category: dict[str, decimal.Decimal] = {}
+    recent_items: list[dict] = []
+
+    for item in records:
+        amount = item.amount or decimal.Decimal("0")
+        if item.type == "income":
+            total_income += amount
+        else:
+            total_expense += amount
+            key = item.category or "other"
+            by_category[key] = by_category.get(key, decimal.Decimal("0")) + amount
+
+        recent_items.append(
+            {
+                "amount": _decimal_to_str(amount),
+                "type": item.type,
+                "category": item.category,
+                "location": item.location,
+                "note": item.note,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+            }
         )
-        return {"answer": f"当前总支出 {total}", "data": {"total": str(total)}}
 
-    return {"answer": "暂不支持该问题（可先按分类/时间段查询）", "data": None}
+    top_categories = sorted(by_category.items(), key=lambda pair: pair[1], reverse=True)[:8]
+    return {
+        "record_count": len(records),
+        "total_expense": _decimal_to_str(total_expense),
+        "total_income": _decimal_to_str(total_income),
+        "top_expense_categories": [
+            {"category": category, "amount": _decimal_to_str(amount)} for category, amount in top_categories
+        ],
+        "recent_records": recent_items[:20],
+    }
+
+
+def answer_finance_question(db: Session, *, team_id: uuid.UUID, question: str) -> dict:
+    q = (question or "").strip()
+    if not q:
+        return {"answer": "问题为空", "data": None}
+
+    snapshot = _build_finance_snapshot(db, team_id=team_id)
+    client = get_llm_client()
+    if not client:
+        return _fallback_answer(db, team_id=team_id, question=q)
+
+    system_prompt = (
+        "You are a Chinese team finance assistant. "
+        "Answer only from the finance snapshot provided by the user. "
+        "Do not invent numbers or records. "
+        "Respond in concise Simplified Chinese. "
+        "If the snapshot is insufficient, say what is missing. "
+        "Return valid JSON only."
+    )
+    user_prompt = (
+        f"用户问题：{q}\n\n"
+        f"财务快照：{snapshot}\n\n"
+        "请返回一个 JSON 对象，包含两个字段：\n"
+        '1. "answer": 给用户展示的最终回答字符串。\n'
+        '2. "data": 你引用的关键数字对象；如果没有可返回 null。\n'
+        "不要输出 JSON 以外的任何内容。"
+    )
+
+    try:
+        result = client.chat_json(system=system_prompt, user=user_prompt) or {}
+    except Exception:
+        return _fallback_answer(db, team_id=team_id, question=q)
+
+    answer = str(result.get("answer") or "").strip()
+    if not answer:
+        return _fallback_answer(db, team_id=team_id, question=q)
+
+    data = result.get("data")
+    if data is not None and not isinstance(data, dict):
+        data = {"value": data}
+    return {"answer": answer, "data": data}

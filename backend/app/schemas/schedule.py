@@ -16,6 +16,17 @@ class ScheduleCreate(BaseModel):
     end_time: dt.datetime | None = None
 
 
+class ScheduleUpdate(BaseModel):
+    title: str
+    description: str | None = None
+    location: str | None = None
+    location_latitude: float | None = None
+    location_longitude: float | None = None
+    is_all_day: bool = False
+    start_time: dt.datetime
+    end_time: dt.datetime | None = None
+
+
 class ScheduleOut(BaseModel):
     id: uuid.UUID
     team_id: uuid.UUID

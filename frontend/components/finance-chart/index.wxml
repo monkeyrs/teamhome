@@ -1,15 +1,22 @@
-<view class="card">
-  <view class="header">支出分类</view>
+<view class="card chart-card">
+  <view class="section-header">
+    <view class="section-title">支出分类</view>
+    <view class="section-meta">最近记录汇总</view>
+  </view>
+
   <block wx:if="{{bars.length}}">
     <block wx:for="{{bars}}" wx:key="name">
       <view class="line">
-        <view class="label">{{item.name}}</view>
+        <view class="line-top">
+          <view class="label">{{item.name}}</view>
+          <view class="amount">{{item.amountText}}</view>
+        </view>
         <view class="bar-wrap">
           <view class="bar" style="width: {{item.width}};"></view>
         </view>
-        <view class="amount">{{item.amountText}}</view>
       </view>
     </block>
   </block>
-  <view wx:else class="muted">暂无支出记录</view>
+
+  <view wx:else class="empty-chart muted">暂无支出记录</view>
 </view>

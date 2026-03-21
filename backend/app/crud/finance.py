@@ -55,3 +55,28 @@ def soft_delete_finance_record(db: Session, *, record: FinanceRecord, batch_id: 
     record.deleted_batch_id = batch_id
     db.add(record)
     db.commit()
+
+
+def update_finance_record(
+    db: Session,
+    *,
+    record: FinanceRecord,
+    amount: decimal.Decimal,
+    record_type: str,
+    category: str,
+    location: str | None,
+    location_latitude: float | None,
+    location_longitude: float | None,
+    note: str | None,
+) -> FinanceRecord:
+    record.amount = amount
+    record.type = record_type
+    record.category = category
+    record.location = location
+    record.location_latitude = location_latitude
+    record.location_longitude = location_longitude
+    record.note = note
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record

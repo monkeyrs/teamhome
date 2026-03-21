@@ -3,59 +3,88 @@
     <view class="overlay-title">设置显示昵称</view>
     <view class="overlay-text">这个昵称会显示在团队内的日程和费用记录上。</view>
     <input class="input-control" maxlength="20" placeholder="请输入昵称" value="{{nicknameDraft}}" bindinput="onNicknameInput" />
-    <button class="btn-primary" bindtap="saveNickname">保存昵称</button>
+    <button class="btn-primary modal-action" bindtap="saveNickname">保存昵称</button>
   </view>
 </view>
 
-<view class="card compact-card">
-  <view class="team-compact" bindtap="toggleTeamPanel">
-    <view class="team-name">{{teams.length ? teams[teamIndex].name : "请选择团队"}}</view>
-    <view class="team-arrow">{{teamPanelOpen ? "收起" : "切换"}}</view>
-  </view>
-
-  <view wx:if="{{teamPanelOpen}}" class="team-panel">
-    <view class="team-create-row">
-      <input
-        class="input-control team-input"
-        maxlength="20"
-        placeholder="创建或加入团队"
-        value="{{teamName}}"
-        bindinput="onTeamNameInput"
-      />
-      <button class="mini-action" bindtap="createOrJoinTeam">创建/加入</button>
+<view class="page-shell">
+  <view class="page-stack">
+    <view class="hero-card">
+      <view class="hero-eyebrow">团队空间</view>
+      <view class="hero-title">助手</view>
+      <view class="hero-desc">统一管理团队、查询数据并处理最近删除的记录。</view>
     </view>
 
-    <block wx:for="{{teams}}" wx:key="id">
-      <view class="team-option">
-        <view class="team-option-name" data-index="{{index}}" bindtap="onSelectTeam">{{item.name}}</view>
-        <view class="team-remove" data-team-id="{{item.id}}" data-team-name="{{item.name}}" bindtap="confirmLeaveTeam">-</view>
+    <view class="card compact-card">
+      <view class="section-header">
+        <view class="section-title">当前团队</view>
+        <view class="section-meta">{{teams.length}} 个团队</view>
       </view>
-    </block>
-  </view>
-</view>
 
-<view class="card">
-  <view class="section-title">团队助手</view>
-  <textarea
-    class="textarea-control"
-    placeholder="例如：上个月餐饮花了多少"
-    value="{{question}}"
-    bindinput="onQuestionInput"
-  />
-  <view class="assistant-actions">
-    <button class="btn-primary send-btn" loading="{{loading}}" bindtap="askAssistant">发送</button>
-    <view
-      class="voice-btn {{recording ? 'voice-btn-recording' : ''}}"
-      bindtouchstart="startRecording"
-      bindtouchend="stopRecording"
-      bindtouchcancel="stopRecording"
-    >语音</view>
-  </view>
-  <button class="btn-secondary" bindtap="undoLastDelete">撤销最近删除</button>
-</view>
+      <view class="team-compact" bindtap="toggleTeamPanel">
+        <view class="team-name">{{teams.length ? teams[teamIndex].name : "请选择团队"}}</view>
+        <view class="team-arrow">{{teamPanelOpen ? "收起" : "切换"}}</view>
+      </view>
 
-<view class="card" wx:if="{{answer}}">
-  <view class="section-title">回答</view>
-  <view>{{answer}}</view>
-  <view class="muted answer-data">{{answerDataText}}</view>
+      <view wx:if="{{teamPanelOpen}}" class="team-panel">
+        <view class="team-create-row">
+          <input
+            class="input-control team-input"
+            maxlength="20"
+            placeholder="创建或加入团队"
+            value="{{teamName}}"
+            bindinput="onTeamNameInput"
+          />
+          <button class="mini-action" bindtap="createOrJoinTeam">加入</button>
+        </view>
+
+        <block wx:for="{{teams}}" wx:key="id">
+          <view class="team-option">
+            <view class="team-option-name" data-index="{{index}}" bindtap="onSelectTeam">{{item.name}}</view>
+            <view class="team-remove" data-team-id="{{item.id}}" data-team-name="{{item.name}}" bindtap="confirmLeaveTeam">退出</view>
+          </view>
+        </block>
+      </view>
+    </view>
+
+    <view class="card form-card">
+      <view class="section-header">
+        <view class="section-title">团队助手</view>
+        <view class="section-meta">支持文本和语音</view>
+      </view>
+
+      <view class="field-group">
+        <view class="field-label">问题</view>
+        <textarea
+          class="textarea-control"
+          placeholder="例如：上个月餐饮花了多少"
+          value="{{question}}"
+          bindinput="onQuestionInput"
+        />
+      </view>
+
+      <view class="assistant-actions">
+        <button class="btn-primary send-btn" loading="{{loading}}" bindtap="askAssistant">发送</button>
+        <view
+          class="voice-btn {{recording ? 'voice-btn-recording' : ''}}"
+          bindtouchstart="startRecording"
+          bindtouchend="stopRecording"
+          bindtouchcancel="stopRecording"
+        >语音</view>
+      </view>
+    </view>
+
+    <view class="card" wx:if="{{answer}}">
+      <view class="section-header answer-header">
+        <view class="section-title">回答</view>
+        <view class="answer-tools">
+          <view class="undo-icon-btn" bindtap="undoLastDelete" aria-label="撤销最近删除">
+            <text class="undo-icon-text">撤销</text>
+          </view>
+        </view>
+      </view>
+      <view class="answer-text">{{answer}}</view>
+      <view class="muted answer-data">{{answerDataText}}</view>
+    </view>
+  </view>
 </view>

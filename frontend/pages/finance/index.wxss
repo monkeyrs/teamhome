@@ -1,125 +1,150 @@
-.page-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  background: rgba(0, 0, 0, 0.32);
+.composer-overlay {
+  align-items: flex-end;
+}
+
+.composer-card {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  max-height: 88vh;
+  overflow: auto;
+}
+
+.composer-close {
+  font-size: 24rpx;
+  color: var(--text-link);
+}
+
+.create-strip {
+  padding-top: 18rpx;
+  padding-bottom: 18rpx;
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 32rpx;
+  justify-content: space-between;
 }
 
-.overlay-card {
-  width: 100%;
-  background: #ffffff;
-  border-radius: 20rpx;
-  padding: 32rpx;
-}
-
-.overlay-title {
-  font-size: 36rpx;
+.create-strip-title {
+  font-size: 28rpx;
   font-weight: 600;
-  color: #191919;
+  color: var(--text-primary);
 }
 
-.overlay-text {
-  margin: 16rpx 0 20rpx;
-  color: #666666;
-}
-
-.form-gap {
-  margin-bottom: 12rpx;
-}
-
-.field-label {
-  margin: 8rpx 0;
+.create-strip-meta {
   font-size: 24rpx;
-  color: #666666;
+  color: var(--text-secondary);
 }
 
 .type-toggle {
   display: flex;
+  gap: 12rpx;
+}
+
+.field-grid {
+  display: flex;
   gap: 16rpx;
+  flex-wrap: wrap;
+}
+
+.field-half {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .type-option {
   flex: 1;
-  height: 88rpx;
-  line-height: 88rpx;
-  text-align: center;
-  border-radius: 12rpx;
+  min-height: 88rpx;
+  border-radius: var(--radius-control);
   font-size: 30rpx;
   font-weight: 600;
-  border: 2rpx solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .type-expense {
-  background: #fff1f0;
-  color: #fa5151;
+  background: #fff4f4;
+  color: var(--danger);
 }
 
 .type-income {
-  background: #e8f7ef;
-  color: #07c160;
+  background: var(--bg-primary-soft);
+  color: var(--brand);
 }
 
 .type-option-active.type-expense {
-  border-color: #fa5151;
-  box-shadow: 0 0 0 2rpx rgba(250, 81, 81, 0.12);
+  box-shadow: inset 0 0 0 2rpx rgba(250, 81, 81, 0.32);
 }
 
 .type-option-active.type-income {
-  border-color: #07c160;
-  box-shadow: 0 0 0 2rpx rgba(7, 193, 96, 0.12);
+  box-shadow: inset 0 0 0 2rpx rgba(7, 193, 96, 0.32);
 }
 
 .location-btn {
-  margin-top: 0;
+  justify-content: flex-start;
 }
 
 .location-preview {
-  margin: 12rpx 0 16rpx;
-  padding: 18rpx 20rpx;
-  border-radius: 12rpx;
-  background: #f7f7f7;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.location-name {
+  font-size: 30rpx;
+  color: var(--text-primary);
 }
 
 .location-clear {
-  margin-top: 10rpx;
-  color: #576b95;
+  margin-top: 6rpx;
   font-size: 24rpx;
-}
-
-.small-text {
-  font-size: 22rpx;
+  color: var(--text-link);
 }
 
 .swipe-row {
   position: relative;
-  margin: 0 24rpx 20rpx;
   overflow: hidden;
-  border-radius: 16rpx;
+  border-radius: var(--radius-card);
+}
+
+.edit-bg,
+.delete-bg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.edit-bg {
+  left: 0;
+  background: #f0f7ff;
+  justify-content: flex-start;
 }
 
 .delete-bg {
-  position: absolute;
   right: 0;
-  top: 0;
-  bottom: 0;
-  background: #fa5151;
-  display: flex;
+  background: var(--danger);
   justify-content: flex-end;
-  overflow: hidden;
 }
 
+.edit-action,
 .delete-action {
   width: 88px;
   height: 100%;
+  font-size: 28rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
-  font-size: 28rpx;
+}
+
+.edit-action {
+  color: #2b6cb0;
+}
+
+.delete-action {
+  color: var(--text-inverse);
 }
 
 .swipe-content {
@@ -128,36 +153,57 @@
   transition: transform 0.16s ease;
 }
 
-.record-top {
+.record-card {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8rpx;
+  flex-direction: column;
+  gap: 10rpx;
 }
 
-.record-card {
-  margin: 0;
+.record-top,
+.record-foot {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16rpx;
 }
 
 .record-category {
-  font-size: 32rpx;
+  flex: 1;
+  font-size: 34rpx;
   font-weight: 600;
+  color: var(--text-primary);
 }
 
 .record-amount {
-  font-size: 30rpx;
-  font-weight: 700;
+  font-size: 34rpx;
+  font-weight: 600;
 }
 
 .record-amount.expense {
-  color: #fa5151;
+  color: var(--danger);
 }
 
 .record-amount.income {
-  color: #07c160;
+  color: var(--brand);
 }
 
-.small {
-  font-size: 22rpx;
-  margin-top: 8rpx;
+.record-meta,
+.record-note,
+.record-place,
+.record-time {
+  font-size: 24rpx;
+  color: var(--text-secondary);
+}
+
+.record-note {
+  color: var(--text-regular);
+}
+
+.record-place {
+  flex: 1;
+  min-width: 0;
+}
+
+.record-time {
+  flex-shrink: 0;
 }

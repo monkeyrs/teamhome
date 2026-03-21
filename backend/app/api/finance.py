@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.crud.change_batch import create_change_batch, prune_old_batches
-from app.crud.finance import create_finance_record, get_finance_record, list_finance_records, soft_delete_finance_record
+from app.crud.finance import create_finance_record, get_finance_record, list_finance_records, soft_delete_finance_record, update_finance_record
 from app.crud.place import touch_place
 from app.crud.team import is_team_member
 from app.schemas.finance import (
@@ -16,6 +16,7 @@ from app.schemas.finance import (
     FinanceOut,
     FinanceParseIn,
     FinanceParseOut,
+    FinanceUpdate,
 )
 from app.services.llm.parser import parse_finance_text
 from app.services.llm.assistant import answer_finance_question
@@ -111,3 +112,30 @@ def delete_finance_route(
     batch = create_change_batch(db, team_id=record.team_id, user_id=current_user.id, action="delete", entity_type="finance")
     soft_delete_finance_record(db, record=record, batch_id=batch.id)
     prune_old_batches(db, team_id=record.team_id, user_id=current_user.id, keep=3)
+
+
+@router.put("/{record_id}")
+def update_finance_route(
+    record_id: uuid.UUID,
+    payload: FinanceUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> FinanceOut:
+    record = get_finance_record(db, record_id=record_id)
+    if not record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finance record not found")
+    if not is_team_member(db, team_id=record.team_id, user_id=current_user.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a team member")
+    record = update_finance_record(
+        db,
+        record=record,
+        amount=payload.amount,
+        record_type=payload.type,
+        category=payload.category,
+        location=payload.location,
+        location_latitude=payload.location_latitude,
+        location_longitude=payload.location_longitude,
+        note=payload.note,
+    )
+    touch_place(db, team_id=record.team_id, name=payload.location or "")
+    return to_finance_out(record)

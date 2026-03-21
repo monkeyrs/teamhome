@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 import re
-from dataclasses import dataclass
 
 import dateparser
-import httpx
 
-from app.core.config import get_settings
+from app.services.llm.openrouter import get_llm_client
 
 
 _AMOUNT_RE = re.compile(r"(-?\d+(?:\.\d+)?)\s*(?:元|块|rmb|RMB)?")
@@ -80,59 +77,6 @@ def _iso_no_seconds(d: dt.datetime) -> str:
     return d.replace(second=0, microsecond=0).isoformat()
 
 
-@dataclass(frozen=True)
-class _LLMClient:
-    base_url: str
-    api_key: str
-    model: str
-
-    def chat_json(self, *, system: str, user: str) -> dict | None:
-        headers = {"Authorization": f"Bearer {self.api_key}"}
-        url = self.base_url.rstrip("/") + "/v1/chat/completions"
-        payload = {
-            "model": self.model,
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-            "temperature": 0,
-        }
-        try:
-            with httpx.Client(timeout=15) as client:
-                resp = client.post(url, headers=headers, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-        except Exception:
-            return None
-
-        try:
-            content = data["choices"][0]["message"]["content"]
-        except Exception:
-            return None
-
-        try:
-            return json.loads(content)
-        except Exception:
-            pass
-
-        if "{" in content and "}" in content:
-            snippet = content[content.find("{") : content.rfind("}") + 1]
-            try:
-                return json.loads(snippet)
-            except Exception:
-                return None
-        return None
-
-
-def _get_llm_client() -> _LLMClient | None:
-    settings = get_settings()
-    if not settings.LLM_PROVIDER:
-        return None
-    if settings.LLM_PROVIDER.lower() != "openai":
-        return None
-    if not settings.OPENAI_API_KEY:
-        return None
-    base_url = settings.OPENAI_BASE_URL or "https://api.openai.com"
-    return _LLMClient(base_url=base_url, api_key=settings.OPENAI_API_KEY, model=settings.OPENAI_MODEL)
-
-
 def parse_finance_text(text: str) -> dict:
     text = (text or "").strip()
     if not text:
@@ -149,7 +93,7 @@ def parse_finance_text(text: str) -> dict:
     if amount is not None:
         return {"amount": amount, "type": record_type, "category": category}
 
-    client = _get_llm_client()
+    client = get_llm_client()
     if not client:
         return {"amount": None, "type": record_type, "category": category}
 

@@ -42,7 +42,7 @@ def list_schedules(db: Session, *, team_id: uuid.UUID) -> list[Schedule]:
     return (
         db.query(Schedule)
         .filter(Schedule.team_id == team_id, Schedule.deleted_at.is_(None))
-        .order_by(Schedule.start_time.asc())
+        .order_by(Schedule.start_time.desc(), Schedule.created_at.desc())
         .all()
     )
 
@@ -56,3 +56,30 @@ def soft_delete_schedule(db: Session, *, schedule: Schedule, batch_id: uuid.UUID
     schedule.deleted_batch_id = batch_id
     db.add(schedule)
     db.commit()
+
+
+def update_schedule(
+    db: Session,
+    *,
+    schedule: Schedule,
+    title: str,
+    description: str | None,
+    location: str | None,
+    location_latitude: float | None,
+    location_longitude: float | None,
+    is_all_day: bool,
+    start_time: dt.datetime,
+    end_time: dt.datetime | None,
+) -> Schedule:
+    schedule.title = title
+    schedule.description = description
+    schedule.location = location
+    schedule.location_latitude = location_latitude
+    schedule.location_longitude = location_longitude
+    schedule.is_all_day = is_all_day
+    schedule.start_time = start_time
+    schedule.end_time = end_time
+    db.add(schedule)
+    db.commit()
+    db.refresh(schedule)
+    return schedule

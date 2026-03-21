@@ -188,6 +188,17 @@ Page({
       wx.showToast({ title: "请先创建或加入团队", icon: "none" });
       return;
     }
+    const confirmed = await new Promise((resolve) => {
+      wx.showModal({
+        title: "确认撤销",
+        content: "将恢复最近一次删除的记录，是否继续？",
+        success: (res) => resolve(!!res.confirm),
+        fail: () => resolve(false)
+      });
+    });
+    if (!confirmed) {
+      return;
+    }
     try {
       await request({
         path: `/changes/undo?team_id=${team.id}`,

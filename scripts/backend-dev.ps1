@@ -14,6 +14,7 @@ $PidFile = Join-Path $RunDir "uvicorn.pid"
 $StdoutLogFile = Join-Path $RunDir "uvicorn.stdout.log"
 $StderrLogFile = Join-Path $RunDir "uvicorn.stderr.log"
 $HealthUrl = "http://127.0.0.1:$Port/openapi.json"
+$VenvPython = Join-Path $BackendDir ".venv\Scripts\python.exe"
 
 function Ensure-RunDir {
   if (-not (Test-Path $RunDir)) {
@@ -127,6 +128,8 @@ function Start-Backend {
     throw "backend directory not found: $BackendDir"
   }
 
+  $pythonExe = if (Test-Path $VenvPython) { $VenvPython } else { "python" }
+
   Write-Host "Starting backend on http://127.0.0.1:$Port ..."
   if (-not (Test-Path $StdoutLogFile)) {
     New-Item -ItemType File -Path $StdoutLogFile -Force | Out-Null
@@ -135,7 +138,7 @@ function Start-Backend {
     New-Item -ItemType File -Path $StderrLogFile -Force | Out-Null
   }
   $proc = Start-Process `
-    -FilePath "python" `
+    -FilePath $pythonExe `
     -ArgumentList "-m uvicorn app.main:app --host 127.0.0.1 --port $Port --reload" `
     -WorkingDirectory $BackendDir `
     -RedirectStandardOutput $StdoutLogFile `
