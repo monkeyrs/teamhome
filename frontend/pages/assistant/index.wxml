@@ -1,29 +1,26 @@
-<view class="page-overlay" wx:if="{{profileDialogOpen}}">
-  <view class="overlay-card">
-    <view class="overlay-title">设置显示昵称</view>
-    <view class="overlay-text">这个昵称会显示在团队内的日程和费用记录上。</view>
-    <input class="input-control" maxlength="20" placeholder="请输入昵称" value="{{nicknameDraft}}" bindinput="onNicknameInput" />
-    <button class="btn-primary modal-action" bindtap="saveNickname">保存昵称</button>
-  </view>
-</view>
-
 <view class="page-shell">
   <view class="page-stack">
-    <view class="hero-card">
-      <view class="hero-eyebrow">团队空间</view>
-      <view class="hero-title">助手</view>
-      <view class="hero-desc">统一管理团队、查询数据并处理最近删除的记录。</view>
+    <view class="hero-card assistant-hero">
+      <view class="locale-trigger" bindtap="toggleLocaleMenu">{{i18n.app.languageButton}}</view>
+      <view class="locale-menu" wx:if="{{localeMenuOpen}}">
+        <block wx:for="{{languageOptions}}" wx:key="code">
+          <view class="locale-option {{locale === item.code ? 'locale-option-active' : ''}}" data-locale="{{item.code}}" bindtap="selectLanguage">{{item.label}}</view>
+        </block>
+      </view>
+      <view class="hero-eyebrow">{{i18n.page.heroEyebrow}}</view>
+      <view class="hero-title">{{i18n.page.heroTitle}}</view>
+      <view class="hero-desc">{{i18n.page.heroDesc}}</view>
     </view>
 
     <view class="card compact-card">
       <view class="section-header">
-        <view class="section-title">当前团队</view>
-        <view class="section-meta">{{teams.length}} 个团队</view>
+        <view class="section-title">{{i18n.page.currentTeam}}</view>
+        <view class="section-meta">{{teams.length}} {{i18n.page.teamCountSuffix}}</view>
       </view>
 
       <view class="team-compact" bindtap="toggleTeamPanel">
-        <view class="team-name">{{teams.length ? teams[teamIndex].name : "请选择团队"}}</view>
-        <view class="team-arrow">{{teamPanelOpen ? "收起" : "切换"}}</view>
+        <view class="team-name">{{teams.length ? teams[teamIndex].name : i18n.page.noTeam}}</view>
+        <view class="team-arrow">{{teamPanelOpen ? i18n.common.collapse : i18n.common.switch}}</view>
       </view>
 
       <view wx:if="{{teamPanelOpen}}" class="team-panel">
@@ -31,17 +28,17 @@
           <input
             class="input-control team-input"
             maxlength="20"
-            placeholder="创建或加入团队"
+            placeholder="{{i18n.page.teamInputPlaceholder}}"
             value="{{teamName}}"
             bindinput="onTeamNameInput"
           />
-          <button class="mini-action" bindtap="createOrJoinTeam">加入</button>
+          <button class="mini-action" bindtap="createOrJoinTeam">{{i18n.common.join}}</button>
         </view>
 
         <block wx:for="{{teams}}" wx:key="id">
           <view class="team-option">
             <view class="team-option-name" data-index="{{index}}" bindtap="onSelectTeam">{{item.name}}</view>
-            <view class="team-remove" data-team-id="{{item.id}}" data-team-name="{{item.name}}" bindtap="confirmLeaveTeam">退出</view>
+            <view class="team-remove" data-team-id="{{item.id}}" data-team-name="{{item.name}}" bindtap="confirmLeaveTeam">{{i18n.common.leave}}</view>
           </view>
         </block>
       </view>
@@ -49,42 +46,62 @@
 
     <view class="card form-card">
       <view class="section-header">
-        <view class="section-title">团队助手</view>
-        <view class="section-meta">支持文本和语音</view>
+        <view class="section-title">{{i18n.page.assistantTitle}}</view>
+        <view class="section-meta">{{i18n.page.assistantMeta}}</view>
       </view>
 
       <view class="field-group">
-        <view class="field-label">问题</view>
+        <view class="field-label">{{i18n.page.questionLabel}}</view>
         <textarea
           class="textarea-control"
-          placeholder="例如：上个月餐饮花了多少"
+          placeholder="{{i18n.page.questionPlaceholder}}"
           value="{{question}}"
           bindinput="onQuestionInput"
+          auto-height="true"
+          cursor-spacing="20"
         />
       </view>
 
+      <view class="input-tip">{{i18n.page.inputTip}}</view>
+
       <view class="assistant-actions">
-        <button class="btn-primary send-btn" loading="{{loading}}" bindtap="askAssistant">发送</button>
-        <view
-          class="voice-btn {{recording ? 'voice-btn-recording' : ''}}"
-          bindtouchstart="startRecording"
-          bindtouchend="stopRecording"
-          bindtouchcancel="stopRecording"
-        >语音</view>
+        <button class="btn-primary send-btn" loading="{{loading}}" bindtap="askAssistant">{{i18n.page.send}}</button>
       </view>
     </view>
 
     <view class="card" wx:if="{{answer}}">
       <view class="section-header answer-header">
-        <view class="section-title">回答</view>
-        <view class="answer-tools">
-          <view class="undo-icon-btn" bindtap="undoLastDelete" aria-label="撤销最近删除">
-            <text class="undo-icon-text">撤销</text>
-          </view>
+        <view class="section-title">{{i18n.page.answerTitle}}</view>
+        <view class="answer-tools" wx:if="{{answerStatus === 'awaiting_confirmation'}}">
+          <view class="answer-top-chip" data-token="confirm" bindtap="onQuickReply">{{i18n.common.confirm}}</view>
+          <view class="answer-top-chip answer-top-chip-secondary" data-token="cancel" bindtap="onQuickReply">{{i18n.common.cancel}}</view>
+        </view>
+        <view class="answer-tools" wx:if="{{answerStatus !== 'awaiting_confirmation' && answerCanUndo}}">
+          <view class="answer-top-chip" bindtap="undoAssistantBatch">{{i18n.common.undo}}</view>
         </view>
       </view>
+
       <view class="answer-text">{{answer}}</view>
-      <view class="muted answer-data">{{answerDataText}}</view>
+      <view class="answer-status" wx:if="{{answerStatusLabel}}">{{i18n.page.statusLabel}}{{answerStatusLabel}}</view>
+
+      <view class="quick-replies" wx:if="{{answerStatus === 'blocked'}}">
+        <view class="quick-reply-btn" data-token="reschedule" bindtap="onQuickReply">{{i18n.page.reschedule}}</view>
+        <view class="quick-reply-btn quick-reply-btn-secondary" data-token="force_create" bindtap="onQuickReply">{{i18n.page.createAnyway}}</view>
+        <view class="quick-reply-btn quick-reply-btn-secondary" data-token="cancel" bindtap="onQuickReply">{{i18n.common.cancel}}</view>
+      </view>
+
+      <view class="quick-replies" wx:if="{{answerStatus === 'collecting' && firstMissingSlot === 'type'}}">
+        <view class="quick-reply-btn" data-token="expense" bindtap="onQuickReply">{{i18n.page.expense}}</view>
+        <view class="quick-reply-btn quick-reply-btn-secondary" data-token="income" bindtap="onQuickReply">{{i18n.page.income}}</view>
+      </view>
+
+      <view class="quick-replies" wx:if="{{answerStatus === 'collecting' && firstMissingSlot === 'category'}}">
+        <view class="quick-reply-btn" data-token="food" bindtap="onQuickReply">{{i18n.page.quickFood}}</view>
+        <view class="quick-reply-btn quick-reply-btn-secondary" data-token="transport" bindtap="onQuickReply">{{i18n.page.quickTransport}}</view>
+        <view class="quick-reply-btn quick-reply-btn-secondary" data-token="shopping" bindtap="onQuickReply">{{i18n.page.quickShopping}}</view>
+      </view>
+
+      <view class="muted answer-data" wx:if="{{answerDataText}}">{{answerDataText}}</view>
     </view>
   </view>
 </view>

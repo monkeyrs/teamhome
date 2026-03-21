@@ -2,6 +2,54 @@
   margin-top: 20rpx;
 }
 
+.assistant-hero {
+  position: relative;
+}
+
+.locale-trigger {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--text-primary);
+  font-size: 28rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.locale-menu {
+  position: absolute;
+  top: 80rpx;
+  right: 0;
+  width: 220rpx;
+  padding: 12rpx;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 18rpx 48rpx rgba(15, 23, 42, 0.14);
+  z-index: 3;
+}
+
+.locale-option {
+  min-height: 64rpx;
+  border-radius: 16rpx;
+  padding: 0 18rpx;
+  display: flex;
+  align-items: center;
+  color: var(--text-regular);
+  font-size: 24rpx;
+}
+
+.locale-option-active {
+  background: var(--bg-soft);
+  color: var(--brand);
+  font-weight: 600;
+}
+
 .answer-data {
   margin-top: 16rpx;
   word-break: break-all;
@@ -18,27 +66,74 @@
   gap: 12rpx;
 }
 
+.answer-top-chip {
+  height: 56rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  background: #f0f7ff;
+  color: #2b6cb0;
+  font-size: 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 0;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.answer-top-chip-secondary {
+  background: var(--bg-soft);
+  color: var(--text-regular);
+}
+
 .answer-text {
   font-size: 30rpx;
   color: var(--text-regular);
   line-height: 1.65;
 }
 
-.undo-icon-btn {
-  width: 64rpx;
-  height: 64rpx;
-  border-radius: 50%;
-  background: var(--bg-soft);
+.answer-status {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: var(--text-secondary);
+}
+
+.input-tip {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.quick-replies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 20rpx;
+  align-items: center;
+}
+
+.quick-reply-btn {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: auto;
+  min-width: 0;
+  flex: 0 0 auto;
+  height: 52rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  background: var(--brand);
+  color: var(--text-inverse);
+  font-size: 24rpx;
+  line-height: 1;
 }
 
-.undo-icon-text {
-  font-size: 22rpx;
-  line-height: 1;
-  color: var(--text-secondary);
-  font-weight: 600;
+.quick-reply-btn-secondary {
+  background: var(--bg-soft);
+  color: var(--text-regular);
 }
 
 .compact-card {
@@ -116,21 +211,4 @@
 
 .send-btn {
   flex: 1;
-}
-
-.voice-btn {
-  width: 132rpx;
-  min-height: 88rpx;
-  border-radius: var(--radius-control);
-  background: var(--bg-soft);
-  color: var(--text-regular);
-  font-size: 28rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.voice-btn-recording {
-  background: var(--brand);
-  color: var(--text-inverse);
 }

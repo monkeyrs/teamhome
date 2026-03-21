@@ -1,45 +1,44 @@
 <view class="page-overlay" wx:if="{{teamReady && !hasTeam}}">
   <view class="overlay-card">
-    <view class="overlay-title">还没有团队</view>
-    <view class="overlay-text">请先到助手页创建或加入团队，再开始记录日程。</view>
-    <button class="btn-primary" bindtap="goAssistantPage">去助手页</button>
+    <view class="overlay-title">{{i18n.page.noTeamTitle}}</view>
+    <view class="overlay-text">{{i18n.page.noTeamText}}</view>
+    <button class="btn-primary" bindtap="goAssistantPage">{{i18n.page.goAssistant}}</button>
   </view>
 </view>
 
 <view class="page-overlay composer-overlay" wx:if="{{hasTeam && composerOpen}}">
   <view class="overlay-card composer-card">
     <view class="section-header">
-      <view class="section-title">{{composerMode === 'edit' ? '修改记录' : '创建记录'}}</view>
-      <view class="composer-close" bindtap="closeComposer">收起</view>
+      <view class="section-title">{{composerMode === 'edit' ? i18n.page.composerEdit : i18n.page.composerCreate}}</view>
     </view>
 
     <view class="form-card">
       <view class="field-group">
-        <view class="field-label">标题</view>
-        <input class="input-control" placeholder="例如：周会、聚餐、看房" value="{{form.title}}" bindinput="onInputTitle" />
+        <view class="field-label">{{i18n.page.titleLabel}}</view>
+        <input class="input-control" placeholder="{{i18n.page.titlePlaceholder}}" value="{{form.title}}" bindinput="onInputTitle" />
       </view>
 
       <view class="field-grid">
         <view class="field-group field-half">
-          <view class="field-label">备注</view>
-          <input class="input-control" placeholder="补充说明" value="{{form.description}}" bindinput="onInputDescription" />
+          <view class="field-label">{{i18n.page.descriptionLabel}}</view>
+          <input class="input-control" placeholder="{{i18n.page.descriptionPlaceholder}}" value="{{form.description}}" bindinput="onInputDescription" />
         </view>
 
         <view class="field-group field-half">
-          <view class="field-label">地点</view>
-          <button class="btn-secondary location-btn" bindtap="chooseLocation">地图选点</button>
+          <view class="field-label">{{i18n.page.locationLabel}}</view>
+          <button class="btn-secondary location-btn" bindtap="chooseLocation">{{i18n.page.locationPick}}</button>
           <view class="info-panel location-preview" wx:if="{{form.placeName}}">
             <view class="location-name">{{form.placeName}}</view>
-            <view class="muted small-text">GPS：{{form.placeLatitude}}, {{form.placeLongitude}}</view>
-            <view class="location-clear" bindtap="clearLocation">清空地点</view>
+            <view class="muted small-text">{{i18n.common.gpsPrefix}}: {{form.placeLatitude}}, {{form.placeLongitude}}</view>
+            <view class="location-clear" bindtap="clearLocation">{{i18n.page.locationClear}}</view>
           </view>
         </view>
       </view>
 
       <view class="switch-row">
         <view>
-          <view class="switch-title">全天日程</view>
-          <view class="field-hint">减少不必要的时间输入</view>
+          <view class="switch-title">{{i18n.page.allDayTitle}}</view>
+          <view class="field-hint">{{i18n.page.allDayHint}}</view>
         </view>
         <checkbox-group bindchange="onToggleAllDay">
           <label class="checkbox-line">
@@ -50,14 +49,14 @@
 
       <view class="field-grid">
         <view class="field-group field-half">
-          <view class="field-label">开始日期</view>
+          <view class="field-label">{{i18n.page.startDate}}</view>
           <picker mode="date" value="{{form.date}}" bindchange="onDateChange">
-            <view class="picker {{form.date ? '' : 'placeholder'}}">{{form.date || "请选择日期"}}</view>
+            <view class="picker {{form.date ? '' : 'placeholder'}}">{{form.date || i18n.page.selectDate}}</view>
           </picker>
         </view>
 
         <view class="field-group field-half" wx:if="{{!form.is_all_day}}">
-          <view class="field-label">开始时间</view>
+          <view class="field-label">{{i18n.page.startTime}}</view>
           <picker mode="time" value="{{form.start_clock}}" bindchange="onTimeChange">
             <view class="picker">{{form.start_clock}}</view>
           </picker>
@@ -66,85 +65,103 @@
 
       <view class="field-grid">
         <view class="field-group field-half">
-          <view class="field-label">结束日期</view>
+          <view class="field-label">{{i18n.page.endDate}}</view>
           <picker mode="date" value="{{form.end_date}}" bindchange="onEndDateChange">
-            <view class="picker {{form.end_date ? '' : 'placeholder'}}">{{form.end_date || "请选择日期"}}</view>
+            <view class="picker {{form.end_date ? '' : 'placeholder'}}">{{form.end_date || i18n.page.selectDate}}</view>
           </picker>
         </view>
 
         <view class="field-group field-half" wx:if="{{!form.is_all_day}}">
-          <view class="field-label">结束时间</view>
+          <view class="field-label">{{i18n.page.endTime}}</view>
           <picker mode="time" value="{{form.end_clock}}" bindchange="onEndTimeChange">
             <view class="picker">{{form.end_clock}}</view>
           </picker>
         </view>
       </view>
 
-      <button class="btn-primary" bindtap="submitSchedule">{{composerMode === 'edit' ? '保存修改' : '创建记录'}}</button>
+      <view class="composer-actions">
+        <view class="action-side action-side-left">
+          <view wx:if="{{composerMode === 'edit'}}" class="danger-mini-btn" bindtap="confirmDeleteEditingSchedule">{{i18n.common.delete}}</view>
+        </view>
+        <button class="btn-primary composer-submit" bindtap="submitSchedule">{{composerMode === 'edit' ? i18n.page.saveEdit : i18n.page.createRecord}}</button>
+        <view class="action-side action-side-right">
+          <view class="composer-close action-cancel" bindtap="closeComposer">{{i18n.common.cancel}}</view>
+        </view>
+      </view>
     </view>
   </view>
 </view>
 
 <view wx:if="{{hasTeam}}" class="page-shell">
   <view class="page-stack">
-    <view class="hero-card">
-      <view class="hero-eyebrow">团队协作</view>
-      <view class="hero-title">日程</view>
-      <view class="hero-desc">记录时间、地点和状态，保持团队安排清晰同步。</view>
+    <view class="sticky-stack">
+      <view class="card info-card">
+        <view class="info-head">
+          <view class="info-copy">{{i18n.page.heroInfo}}</view>
+          <view class="info-filter {{showPendingOnly ? 'info-filter-active' : ''}}" bindtap="togglePendingFilter">{{i18n.page.pendingOnly}}</view>
+        </view>
+      </view>
+      <view class="card create-strip" bindtap="openCreateComposer">
+        <view class="create-strip-plus">+</view>
+      </view>
     </view>
 
-    <view class="card create-strip" bindtap="openCreateComposer">
-      <view class="create-strip-title">创建记录</view>
-      <view class="create-strip-meta">{{composerOpen ? "收起中" : "点击展开"}}</view>
-    </view>
-
-    <view class="list-title">全部日程</view>
-    <block wx:if="{{schedules.length}}">
-      <block wx:for="{{schedules}}" wx:key="id">
-        <view class="swipe-row">
-          <view class="edit-bg" style="width: {{item.editWidth}}px;">
-            <view class="edit-action" data-index="{{index}}" bindtap="onTapEdit">修改</view>
-          </view>
-          <view class="delete-bg" style="width: {{item.deleteWidth}}px;">
-            <view class="delete-action" data-index="{{index}}" bindtap="onTapDelete">删除</view>
-          </view>
-          <view
-            class="swipe-content"
-            data-index="{{index}}"
-            style="transform: translateX({{item.offsetX}}px);"
-            bindtouchstart="onSwipeStart"
-            bindtouchmove="onSwipeMove"
-            bindtouchend="onSwipeEnd"
-          >
-            <view class="card schedule-card">
-              <view class="schedule-head">
-                <view class="title">{{item.title || "未命名日程"}}</view>
-                <view class="status status-{{item.status || 'pending'}}">{{item.statusText}}</view>
-              </view>
-              <view class="detail-row">
-                <view class="detail-label">创建人</view>
-                <view class="detail-value">{{item.creatorName}}</view>
-              </view>
-              <view class="detail-row">
-                <view class="detail-label">开始</view>
-                <view class="detail-value">{{item.startText}}</view>
-              </view>
-              <view class="detail-row">
-                <view class="detail-label">结束</view>
-                <view class="detail-value">{{item.endText}}</view>
-              </view>
-              <view class="detail-row">
-                <view class="detail-label">地点</view>
-                <view class="detail-value">{{item.locationText}}</view>
+    <view class="record-flow">
+      <block wx:if="{{visibleSchedules.length}}">
+        <block wx:for="{{visibleSchedules}}" wx:key="id">
+          <view class="swipe-row">
+            <view class="edit-bg" style="width: {{item.editWidth}}px;">
+              <view class="edit-action" data-index="{{index}}" bindtap="onTapEdit">{{i18n.common.edit}}</view>
+            </view>
+            <view class="left-action-bg {{item.leftActionClass}}" style="width: {{item.leftActionWidth}}px;">
+              <view class="left-action {{item.leftActionClass}}" data-index="{{index}}" bindtap="onTapLeftAction">{{item.leftActionText}}</view>
+            </view>
+            <view
+              id="schedule-{{item.id}}"
+              class="swipe-content"
+              data-index="{{index}}"
+              style="transform: translateX({{item.offsetX}}px);"
+              bindtouchstart="onSwipeStart"
+              bindtouchmove="onSwipeMove"
+              bindtouchend="onSwipeEnd"
+            >
+              <view class="card schedule-card">
+                <view class="schedule-head">
+                  <view class="title">{{item.title || i18n.page.unnamed}}</view>
+                  <view class="status status-{{item.status || 'pending'}}">{{item.statusText}}</view>
+                </view>
+                <view class="detail-grid">
+                  <view class="detail-cell">
+                    <view class="detail-label">{{i18n.page.creator}}</view>
+                    <view class="detail-value">{{item.creatorName}}</view>
+                  </view>
+                  <view class="detail-cell">
+                    <view class="detail-label">{{i18n.page.place}}</view>
+                    <view class="detail-value">{{item.locationText}}</view>
+                  </view>
+                  <view class="detail-cell">
+                    <view class="detail-label">{{i18n.page.start}}</view>
+                    <view class="detail-value">{{item.startText}}</view>
+                  </view>
+                  <view class="detail-cell">
+                    <view class="detail-label">{{i18n.page.end}}</view>
+                    <view class="detail-value">{{item.endText}}</view>
+                  </view>
+                  <view class="detail-cell detail-cell-full">
+                    <view class="detail-label">{{i18n.page.note}}</view>
+                    <view class="detail-value">{{item.noteText}}</view>
+                  </view>
+                </view>
               </view>
             </view>
           </view>
-        </view>
+        </block>
       </block>
-    </block>
-    <view wx:else class="card empty-card">
-      <view class="empty-title">暂无日程</view>
-      <view class="empty-text">创建一条团队安排后会显示在这里。</view>
+      <view wx:else class="card empty-card">
+        <view class="empty-title">{{i18n.page.emptyTitle}}</view>
+        <view class="empty-text">{{i18n.page.emptyText}}</view>
+      </view>
+      <view wx:if="{{loadingMoreFuture}}" class="future-loading">{{i18n.page.futureLoading}}</view>
     </view>
   </view>
 </view>

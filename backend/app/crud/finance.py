@@ -2,6 +2,7 @@ import decimal
 import datetime as dt
 import uuid
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.finance import FinanceRecord
@@ -15,6 +16,7 @@ def create_finance_record(
     amount: decimal.Decimal,
     record_type: str,
     category: str,
+    occurred_at: dt.datetime | None,
     location: str | None,
     location_latitude: float | None,
     location_longitude: float | None,
@@ -26,6 +28,7 @@ def create_finance_record(
         amount=amount,
         type=record_type,
         category=category,
+        occurred_at=occurred_at or dt.datetime.now(dt.timezone.utc),
         location=location,
         location_latitude=location_latitude,
         location_longitude=location_longitude,
@@ -41,7 +44,7 @@ def list_finance_records(db: Session, *, team_id: uuid.UUID) -> list[FinanceReco
     return (
         db.query(FinanceRecord)
         .filter(FinanceRecord.team_id == team_id, FinanceRecord.deleted_at.is_(None))
-        .order_by(FinanceRecord.created_at.desc())
+        .order_by(FinanceRecord.occurred_at.desc(), FinanceRecord.created_at.desc())
         .all()
     )
 
@@ -64,6 +67,7 @@ def update_finance_record(
     amount: decimal.Decimal,
     record_type: str,
     category: str,
+    occurred_at: dt.datetime | None,
     location: str | None,
     location_latitude: float | None,
     location_longitude: float | None,
@@ -72,6 +76,7 @@ def update_finance_record(
     record.amount = amount
     record.type = record_type
     record.category = category
+    record.occurred_at = occurred_at or record.occurred_at or dt.datetime.now(dt.timezone.utc)
     record.location = location
     record.location_latitude = location_latitude
     record.location_longitude = location_longitude
@@ -80,3 +85,20 @@ def update_finance_record(
     db.commit()
     db.refresh(record)
     return record
+
+
+def list_popular_categories(db: Session, *, team_id: uuid.UUID, limit: int = 5) -> list[str]:
+    rows = (
+        db.query(FinanceRecord.category, func.count(FinanceRecord.id).label("total"))
+        .filter(
+            FinanceRecord.team_id == team_id,
+            FinanceRecord.deleted_at.is_(None),
+            FinanceRecord.category.is_not(None),
+            FinanceRecord.category != "",
+        )
+        .group_by(FinanceRecord.category)
+        .order_by(func.count(FinanceRecord.id).desc(), FinanceRecord.category.asc())
+        .limit(limit)
+        .all()
+    )
+    return [row[0] for row in rows if row[0]]

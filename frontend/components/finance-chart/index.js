@@ -3,6 +3,10 @@ Component({
     records: {
       type: Array,
       value: []
+    },
+    chart: {
+      type: Object,
+      value: {}
     }
   },
   observers: {

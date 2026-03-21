@@ -14,23 +14,141 @@
   color: var(--text-link);
 }
 
-.create-strip {
-  padding-top: 18rpx;
-  padding-bottom: 18rpx;
+.danger-mini-btn {
+  min-width: 92rpx;
+  height: 64rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  background: var(--danger);
+  color: var(--text-inverse);
+  font-size: 24rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.composer-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.create-strip-title {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: var(--text-primary);
+.action-side {
+  width: 120rpx;
+  display: flex;
+  align-items: center;
 }
 
-.create-strip-meta {
+.action-side-left {
+  justify-content: flex-start;
+}
+
+.action-side-right {
+  justify-content: center;
+}
+
+.composer-submit {
+  min-width: 220rpx;
+  min-height: 64rpx;
+  padding: 0 28rpx;
+  border-radius: 999rpx;
+  background: var(--brand);
+  color: var(--text-inverse);
+  font-size: 24rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.action-cancel {
+  min-width: 72rpx;
+  min-height: 64rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.info-card {
+  padding-top: 16rpx;
+  padding-bottom: 16rpx;
+}
+
+.sticky-stack {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  background: var(--bg-page);
+  margin: -24rpx -24rpx 0;
+  padding: 24rpx 24rpx 16rpx;
+  box-sizing: border-box;
+}
+
+.info-copy {
   font-size: 24rpx;
   color: var(--text-secondary);
+}
+
+.info-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.info-filter {
+  min-width: 136rpx;
+  height: 56rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  background: #f0f7ff;
+  color: #2b6cb0;
+  font-size: 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.info-filter-active {
+  background: rgba(43, 108, 176, 0.14);
+  color: #1f5f99;
+}
+
+.record-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.future-loading {
+  padding: 8rpx 0 12rpx;
+  font-size: 24rpx;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.create-strip {
+  padding-top: 16rpx;
+  padding-bottom: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  background: var(--bg-primary-soft);
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.06);
+}
+
+.create-strip-plus {
+  font-size: 40rpx;
+  line-height: 1;
+  font-weight: 500;
+  color: var(--brand);
 }
 
 .field-grid {
@@ -95,7 +213,7 @@
 }
 
 .edit-bg,
-.delete-bg {
+.left-action-bg {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -105,18 +223,25 @@
 
 .edit-bg {
   left: 0;
-  background: #f0f7ff;
+  background: #fff7e8;
   justify-content: flex-start;
 }
 
-.delete-bg {
+.left-action-bg {
   right: 0;
-  background: var(--danger);
   justify-content: flex-end;
 }
 
+.left-action-bg.left-action-complete {
+  background: #effaf3;
+}
+
+.left-action-bg.left-action-pending {
+  background: #f0f7ff;
+}
+
 .edit-action,
-.delete-action {
+.left-action {
   width: 88px;
   height: 100%;
   font-size: 28rpx;
@@ -126,11 +251,19 @@
 }
 
 .edit-action {
-  color: #2b6cb0;
+  color: #b7791f;
 }
 
-.delete-action {
-  color: var(--text-inverse);
+.left-action {
+  color: var(--text-regular);
+}
+
+.left-action.left-action-complete {
+  color: var(--brand);
+}
+
+.left-action.left-action-pending {
+  color: #2b6cb0;
 }
 
 .swipe-content {
@@ -142,7 +275,7 @@
 .schedule-card {
   display: flex;
   flex-direction: column;
-  gap: 14rpx;
+  gap: 10rpx;
 }
 
 .schedule-head {
@@ -160,23 +293,34 @@
   color: var(--text-primary);
 }
 
-.detail-row {
+.detail-grid {
   display: flex;
-  align-items: flex-start;
-  gap: 16rpx;
+  flex-wrap: wrap;
+  gap: 10rpx 16rpx;
+}
+
+.detail-cell {
+  width: calc(50% - 8rpx);
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  min-width: 0;
+}
+
+.detail-cell-full {
+  width: 100%;
 }
 
 .detail-label {
-  width: 88rpx;
   font-size: 24rpx;
   color: var(--text-secondary);
 }
 
 .detail-value {
-  flex: 1;
   font-size: 26rpx;
   color: var(--text-regular);
   word-break: break-word;
+  line-height: 1.45;
 }
 
 .status {
@@ -192,8 +336,13 @@
 }
 
 .status-completed {
-  background: var(--bg-primary-soft);
-  color: var(--brand);
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+}
+
+.status-pending {
+  background: #f0f7ff;
+  color: #2b6cb0;
 }
 
 .status-cancelled {

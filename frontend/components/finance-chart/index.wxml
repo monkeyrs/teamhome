@@ -1,7 +1,7 @@
 <view class="card chart-card">
   <view class="section-header">
-    <view class="section-title">支出分类</view>
-    <view class="section-meta">最近记录汇总</view>
+    <view class="section-title">{{chart.title}}</view>
+    <view class="section-meta">{{chart.meta}}</view>
   </view>
 
   <block wx:if="{{bars.length}}">
@@ -18,5 +18,5 @@
     </block>
   </block>
 
-  <view wx:else class="empty-chart muted">暂无支出记录</view>
+  <view wx:else class="empty-chart muted">{{chart.empty}}</view>
 </view>

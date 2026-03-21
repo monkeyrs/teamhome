@@ -16,6 +16,7 @@ class User(Base):
     wechat_openid: Mapped[str] = mapped_column(String, unique=True, index=True)
     nickname: Mapped[str | None] = mapped_column(String, nullable=True)
     avatar: Mapped[str | None] = mapped_column(String, nullable=True)
+    language: Mapped[str] = mapped_column(String, default="zh-CN", server_default="zh-CN")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     teams_owned = relationship("Team", back_populates="owner", cascade="all,delete-orphan")

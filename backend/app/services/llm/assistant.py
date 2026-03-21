@@ -7,6 +7,7 @@ import uuid
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.i18n import TERM_SETS, translate
 from app.models.finance import FinanceRecord
 from app.services.llm.openrouter import get_llm_client
 
@@ -24,12 +25,15 @@ def _decimal_to_str(value: decimal.Decimal | None) -> str:
     return format(value.quantize(decimal.Decimal("0.01")), "f")
 
 
-def _fallback_answer(db: Session, *, team_id: uuid.UUID, question: str) -> dict:
+def _fallback_answer(db: Session, *, team_id: uuid.UUID, question: str, locale: str) -> dict:
     q = (question or "").strip()
     if not q:
-        return {"answer": "问题为空", "data": None}
+        return {"answer": translate(locale, "finance.empty_question"), "data": None}
 
-    if "上个月" in q and any(word in q for word in ["餐饮", "吃", "饭"]):
+    lower_q = q.casefold()
+    if any(term.casefold() in lower_q for term in TERM_SETS["last_month_terms"]) and any(
+        term.casefold() in lower_q for term in TERM_SETS["food_terms"]
+    ):
         start, end = _month_range(dt.datetime.now().astimezone())
         total = (
             db.query(func.coalesce(func.sum(FinanceRecord.amount), 0))
@@ -38,12 +42,12 @@ def _fallback_answer(db: Session, *, team_id: uuid.UUID, question: str) -> dict:
                 FinanceRecord.type == "expense",
                 FinanceRecord.created_at >= start,
                 FinanceRecord.created_at < end,
-                FinanceRecord.category.in_(["food", "餐饮"]),
+                FinanceRecord.category.in_(list(TERM_SETS["food_categories"])),
             )
             .scalar()
         )
         return {
-            "answer": f"上个月餐饮支出合计 {_decimal_to_str(total)} 元",
+            "answer": translate(locale, "finance.last_month_food", total=_decimal_to_str(total)),
             "data": {"total": _decimal_to_str(total), "start": start.isoformat(), "end": end.isoformat()},
         }
 
@@ -53,7 +57,7 @@ def _fallback_answer(db: Session, *, team_id: uuid.UUID, question: str) -> dict:
         .scalar()
     )
     return {
-        "answer": f"当前总支出 {_decimal_to_str(total)} 元。你也可以继续问我按分类、时间段或成员汇总的问题。",
+        "answer": translate(locale, "finance.total_expense", total=_decimal_to_str(total)),
         "data": {"total_expense": _decimal_to_str(total)},
     }
 
@@ -104,41 +108,48 @@ def _build_finance_snapshot(db: Session, *, team_id: uuid.UUID) -> dict:
     }
 
 
-def answer_finance_question(db: Session, *, team_id: uuid.UUID, question: str) -> dict:
+def answer_finance_question(db: Session, *, team_id: uuid.UUID, question: str, locale: str = "zh-CN") -> dict:
     q = (question or "").strip()
     if not q:
-        return {"answer": "问题为空", "data": None}
+        return {"answer": translate(locale, "finance.empty_question"), "data": None}
 
     snapshot = _build_finance_snapshot(db, team_id=team_id)
     client = get_llm_client()
     if not client:
-        return _fallback_answer(db, team_id=team_id, question=q)
+        return _fallback_answer(db, team_id=team_id, question=q, locale=locale)
 
+    response_language = {
+        "zh-CN": "Simplified Chinese",
+        "en-US": "English",
+        "ja-JP": "Japanese",
+    }.get(locale, "Simplified Chinese")
     system_prompt = (
-        "You are a Chinese team finance assistant. "
-        "Answer only from the finance snapshot provided by the user. "
-        "Do not invent numbers or records. "
-        "Respond in concise Simplified Chinese. "
-        "If the snapshot is insufficient, say what is missing. "
+        "You are a team finance assistant.\n"
+        "Always reason, compute, and judge in English.\n"
+        "Answer only from the finance snapshot provided by the user.\n"
+        "Do not invent numbers or records.\n"
+        f"Write the final `answer` field in {response_language}.\n"
+        "If the snapshot is insufficient, say what is missing.\n"
         "Return valid JSON only."
     )
     user_prompt = (
-        f"用户问题：{q}\n\n"
-        f"财务快照：{snapshot}\n\n"
-        "请返回一个 JSON 对象，包含两个字段：\n"
-        '1. "answer": 给用户展示的最终回答字符串。\n'
-        '2. "data": 你引用的关键数字对象；如果没有可返回 null。\n'
-        "不要输出 JSON 以外的任何内容。"
+        f"User locale: {locale}\n"
+        f"User question: {q}\n\n"
+        f"Finance snapshot: {snapshot}\n\n"
+        'Return a JSON object with two fields:\n'
+        '1) "answer": final user-facing answer string.\n'
+        '2) "data": key numeric facts referenced; null if none.\n'
+        "Do not output anything outside JSON."
     )
 
     try:
         result = client.chat_json(system=system_prompt, user=user_prompt) or {}
     except Exception:
-        return _fallback_answer(db, team_id=team_id, question=q)
+        return _fallback_answer(db, team_id=team_id, question=q, locale=locale)
 
     answer = str(result.get("answer") or "").strip()
     if not answer:
-        return _fallback_answer(db, team_id=team_id, question=q)
+        return _fallback_answer(db, team_id=team_id, question=q, locale=locale)
 
     data = result.get("data")
     if data is not None and not isinstance(data, dict):

@@ -1,4 +1,5 @@
 const { request, setToken, setCurrentUser, clearToken, setCurrentTeamId } = require("./request");
+const { getLocale, getMessages } = require("./i18n");
 
 async function loginIfNeeded(forceRefresh = false) {
   const app = getApp();
@@ -19,13 +20,15 @@ async function loginIfNeeded(forceRefresh = false) {
     });
   });
 
+  const locale = getLocale();
   const loginRes = await request({
     path: "/auth/login",
     method: "POST",
     withAuth: false,
     data: {
       code,
-      nickname: "微信用户"
+      nickname: getMessages(locale).app.defaultNickname,
+      language: locale
     }
   });
   setToken(loginRes.token || "");

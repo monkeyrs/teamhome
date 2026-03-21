@@ -1,4 +1,5 @@
 const app = getApp();
+const { setLocale } = require("./i18n");
 
 function normalizePath(path) {
   if (!path) return "";
@@ -77,6 +78,9 @@ function setToken(token) {
 function setCurrentUser(user) {
   app.globalData.user = user || null;
   wx.setStorageSync("user", app.globalData.user || "");
+  if (app.globalData.user && app.globalData.user.language) {
+    setLocale(app.globalData.user.language);
+  }
   const userId = app.globalData.user && app.globalData.user.id;
   app.globalData.currentTeamId = userId ? (wx.getStorageSync(`currentTeamId:${userId}`) || "") : "";
 }

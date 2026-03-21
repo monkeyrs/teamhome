@@ -41,10 +41,13 @@ def ensure_dev_schema(engine) -> None:
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_change_batches_team_id ON change_batches(team_id)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_change_batches_user_id ON change_batches(user_id)"))
 
+    user_columns = {col["name"] for col in inspector.get_columns("users")} if "users" in inspector.get_table_names() else set()
     schedule_columns = {col["name"] for col in inspector.get_columns("schedules")} if "schedules" in inspector.get_table_names() else set()
     finance_columns = {col["name"] for col in inspector.get_columns("finance_records")} if "finance_records" in inspector.get_table_names() else set()
 
     with engine.begin() as conn:
+        if "language" not in user_columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN language VARCHAR NOT NULL DEFAULT 'zh-CN'"))
         if "location" not in schedule_columns:
             conn.execute(text("ALTER TABLE schedules ADD COLUMN location VARCHAR"))
         if "location_latitude" not in schedule_columns:
@@ -63,6 +66,8 @@ def ensure_dev_schema(engine) -> None:
             conn.execute(text("ALTER TABLE finance_records ADD COLUMN location_latitude DOUBLE PRECISION"))
         if "location_longitude" not in finance_columns:
             conn.execute(text("ALTER TABLE finance_records ADD COLUMN location_longitude DOUBLE PRECISION"))
+        if "occurred_at" not in finance_columns:
+            conn.execute(text("ALTER TABLE finance_records ADD COLUMN occurred_at TIMESTAMPTZ DEFAULT now()"))
         if "deleted_at" not in finance_columns:
             conn.execute(text("ALTER TABLE finance_records ADD COLUMN deleted_at TIMESTAMPTZ"))
         if "deleted_batch_id" not in finance_columns:

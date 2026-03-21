@@ -9,6 +9,7 @@ class FinanceCreate(BaseModel):
     amount: decimal.Decimal
     type: str
     category: str
+    occurred_at: str | None = None
     location: str | None = None
     location_latitude: float | None = None
     location_longitude: float | None = None
@@ -19,6 +20,7 @@ class FinanceUpdate(BaseModel):
     amount: decimal.Decimal
     type: str
     category: str
+    occurred_at: str | None = None
     location: str | None = None
     location_latitude: float | None = None
     location_longitude: float | None = None
@@ -33,6 +35,7 @@ class FinanceOut(BaseModel):
     amount: decimal.Decimal
     type: str
     category: str
+    occurred_at: str | None = None
     location: str | None = None
     location_latitude: float | None = None
     location_longitude: float | None = None

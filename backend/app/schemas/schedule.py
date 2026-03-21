@@ -25,6 +25,7 @@ class ScheduleUpdate(BaseModel):
     is_all_day: bool = False
     start_time: dt.datetime
     end_time: dt.datetime | None = None
+    status: str | None = None
 
 
 class ScheduleOut(BaseModel):

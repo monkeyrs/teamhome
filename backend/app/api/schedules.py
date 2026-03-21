@@ -1,3 +1,4 @@
+import datetime as dt
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -39,12 +40,14 @@ def to_schedule_out(item) -> ScheduleOut:
 @router.get("")
 def list_schedules_route(
     team_id: uuid.UUID,
+    window_start: dt.datetime | None = None,
+    window_end: dt.datetime | None = None,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> list[ScheduleOut]:
     if not is_team_member(db, team_id=team_id, user_id=current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a team member")
-    items = list_schedules(db, team_id=team_id)
+    items = list_schedules(db, team_id=team_id, window_start=window_start, window_end=window_end)
     return [to_schedule_out(item) for item in items]
 
 
@@ -118,6 +121,7 @@ def update_schedule_route(
         is_all_day=payload.is_all_day,
         start_time=payload.start_time,
         end_time=payload.end_time,
+        status=payload.status,
     )
     touch_place(db, team_id=schedule.team_id, name=payload.location or "")
     return to_schedule_out(schedule)

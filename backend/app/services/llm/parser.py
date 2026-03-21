@@ -5,64 +5,56 @@ import re
 
 import dateparser
 
+from app.core.i18n import PARSER_DATA, RELATIVE_DAY_TERMS
 from app.services.llm.openrouter import get_llm_client
 
 
-_AMOUNT_RE = re.compile(r"(-?\d+(?:\.\d+)?)\s*(?:元|块|rmb|RMB)?")
+_AMOUNT_RE = re.compile(PARSER_DATA["amount_pattern"])
+_BARE_NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
+_SCHEDULE_DURATION_RE = re.compile(PARSER_DATA["schedule_duration_pattern"])
+_CLOCK_RE = re.compile(PARSER_DATA["schedule_clock_pattern"], re.IGNORECASE)
 
 
 def _guess_finance_type(text: str) -> str:
-    income_words = ["收入", "收款", "入账", "工资", "奖金", "报销", "到账"]
-    expense_words = ["花", "花了", "支出", "付款", "买", "消费", "用了", "扣款"]
-    if any(w in text for w in income_words):
+    lowered = text.casefold()
+    if any(word.casefold() in lowered for word in PARSER_DATA["finance_income_words"]):
         return "income"
-    if any(w in text for w in expense_words):
+    if any(word.casefold() in lowered for word in PARSER_DATA["finance_expense_words"]):
         return "expense"
     return "expense"
 
 
 def _guess_finance_category(text: str) -> str:
-    mapping: list[tuple[str, str]] = [
-        ("餐", "food"),
-        ("饭", "food"),
-        ("奶茶", "food"),
-        ("咖啡", "food"),
-        ("外卖", "food"),
-        ("公交", "transport"),
-        ("地铁", "transport"),
-        ("打车", "transport"),
-        ("出租", "transport"),
-        ("油", "transport"),
-        ("房租", "rent"),
-        ("租金", "rent"),
-        ("水电", "utilities"),
-        ("电费", "utilities"),
-        ("水费", "utilities"),
-        ("网费", "utilities"),
-        ("话费", "utilities"),
-        ("购物", "shopping"),
-        ("买", "shopping"),
-        ("衣", "shopping"),
-        ("鞋", "shopping"),
-        ("电影", "entertainment"),
-        ("游戏", "entertainment"),
-        ("门票", "entertainment"),
-        ("工资", "salary"),
-        ("奖金", "salary"),
-        ("报销", "reimbursement"),
-    ]
-    for k, v in mapping:
-        if k in text:
-            return v
+    lowered = text.casefold()
+    for keyword, category in PARSER_DATA["finance_category_mapping"]:
+        if keyword.casefold() in lowered:
+            return category
     return "other"
 
 
 def _extract_amount(text: str) -> float | None:
     matches = _AMOUNT_RE.findall(text)
-    if not matches:
+    if matches:
+        last = matches[-1]
+        amount_text = last[0] if isinstance(last, tuple) else last
+        try:
+            return float(amount_text)
+        except ValueError:
+            return None
+
+    lowered = text.casefold()
+    has_finance_verb = any(
+        word.casefold() in lowered
+        for word in (PARSER_DATA["finance_income_words"] + PARSER_DATA["finance_expense_words"])
+    )
+    if not has_finance_verb:
+        return None
+
+    numbers = _BARE_NUMBER_RE.findall(text)
+    if not numbers:
         return None
     try:
-        return float(matches[-1][0])
+        return float(numbers[-1])
     except ValueError:
         return None
 
@@ -71,13 +63,71 @@ def _now_local() -> dt.datetime:
     return dt.datetime.now().astimezone()
 
 
-def _iso_no_seconds(d: dt.datetime) -> str:
-    if d.tzinfo is None:
-        return d.replace(second=0, microsecond=0).isoformat()
-    return d.replace(second=0, microsecond=0).isoformat()
+def _iso_no_seconds(value: dt.datetime) -> str:
+    return value.replace(second=0, microsecond=0).isoformat()
 
 
-def parse_finance_text(text: str) -> dict:
+def _contains_term(text: str, terms: set[str]) -> bool:
+    lowered = text.casefold()
+    return any(term.casefold() in lowered for term in terms)
+
+
+def _has_schedule_time_hint(text: str) -> bool:
+    if _CLOCK_RE.search(text):
+        return True
+    markers = set(PARSER_DATA["schedule_time_markers"])
+    for terms in RELATIVE_DAY_TERMS.values():
+        markers.update(terms)
+    return _contains_term(text, markers)
+
+
+def _parse_schedule_datetime(text: str) -> dt.datetime | None:
+    settings = {"RELATIVE_BASE": _now_local(), "PREFER_DATES_FROM": "future"}
+    language_candidates: list[list[str] | None] = [["zh", "en", "ja"], ["zh"], ["en"], ["ja"], None]
+    for languages in language_candidates:
+        try:
+            if languages:
+                parsed = dateparser.parse(text, languages=languages, settings=settings)
+            else:
+                parsed = dateparser.parse(text, settings=settings)
+        except Exception:
+            parsed = None
+        if parsed:
+            return parsed
+    return None
+
+
+def _infer_relative_schedule_start(text: str) -> dt.datetime | None:
+    base = _now_local().replace(minute=0, second=0, microsecond=0)
+
+    day_offset = 0
+    if _contains_term(text, RELATIVE_DAY_TERMS["day_after_tomorrow"]):
+        day_offset = 2
+    elif _contains_term(text, RELATIVE_DAY_TERMS["tomorrow"]):
+        day_offset = 1
+
+    target = base + dt.timedelta(days=day_offset)
+
+    hour: int | None = None
+    for profile in PARSER_DATA["schedule_time_profiles"]:
+        terms = set(profile.get("terms") or [])
+        candidate_hour = int(profile.get("hour"))
+        if _contains_term(text, terms):
+            hour = candidate_hour
+            break
+
+    if hour is None:
+        if _contains_term(text, RELATIVE_DAY_TERMS["today"]):
+            hour = max(base.hour + 1, 9)
+        elif day_offset > 0:
+            hour = 9
+        else:
+            return None
+
+    return target.replace(hour=hour)
+
+
+def parse_finance_text(text: str, *, use_llm: bool = True) -> dict:
     text = (text or "").strip()
     if not text:
         return {"amount": None, "type": None, "category": None}
@@ -93,12 +143,23 @@ def parse_finance_text(text: str) -> dict:
     if amount is not None:
         return {"amount": amount, "type": record_type, "category": category}
 
+    if not use_llm:
+        return {"amount": None, "type": record_type, "category": category}
+
     client = get_llm_client()
     if not client:
         return {"amount": None, "type": record_type, "category": category}
 
-    system = "Extract finance data from user text. Return JSON with fields: amount (number), type (income|expense), category (string)."
-    data = client.chat_json(system=system, user=text) or {}
+    system = (
+        "Extract finance fields from user text.\n"
+        "Always reason and classify in English.\n"
+        "Return JSON only with fields: amount(number|null), type(income|expense|null), category(string|null)."
+    )
+    try:
+        data = client.chat_json(system=system, user=text) or {}
+    except Exception:
+        return {"amount": None, "type": record_type, "category": category}
+
     return {
         "amount": data.get("amount"),
         "type": data.get("type") or record_type,
@@ -111,28 +172,29 @@ def parse_schedule_text(text: str) -> dict:
     if not text:
         return {"title": None, "start_time": None, "end_time": None}
 
-    settings = {"RELATIVE_BASE": _now_local(), "PREFER_DATES_FROM": "future"}
-    start = dateparser.parse(text, languages=["zh"], settings=settings) or dateparser.parse(text, settings=settings)
+    if not _has_schedule_time_hint(text):
+        return {"title": text, "start_time": None, "end_time": None}
+
+    start = _parse_schedule_datetime(text) or _infer_relative_schedule_start(text)
 
     title = text
     if start:
-        title = re.sub(r"(今天|明天|后天|下周|周[一二三四五六日天])", "", title)
-        title = re.sub(r"(\d{1,2}点(?:半)?|\d{1,2}:\d{2})", "", title)
-        title = re.sub(r"(上午|下午|晚上|中午|凌晨)", "", title)
-        title = re.sub(r"[，,。\\.\\s]+", " ", title).strip()
+        for pattern in PARSER_DATA["schedule_title_patterns"][:-1]:
+            title = re.sub(pattern, "", title)
+        title = re.sub(PARSER_DATA["schedule_title_patterns"][-1], " ", title).strip()
 
     end: dt.datetime | None = None
-    duration = re.search(r"(\d+(?:\.\d+)?)\s*(小时|h|H|分钟|min|MIN)", text)
+    duration = _SCHEDULE_DURATION_RE.search(text)
     if start and duration:
         value = float(duration.group(1))
         unit = duration.group(2).lower()
-        if "小时" in unit or unit == "h":
+        if PARSER_DATA["schedule_hour_unit"] in unit or unit == "h":
             end = start + dt.timedelta(hours=value)
         else:
             end = start + dt.timedelta(minutes=value)
 
     if not title:
-        title = "日程"
+        title = PARSER_DATA["schedule_default_title"]
 
     return {
         "title": title,

@@ -2,6 +2,7 @@ import uuid
 
 from sqlalchemy.orm import Session
 
+from app.core.i18n import normalize_locale
 from app.models.user import User
 
 
@@ -14,7 +15,11 @@ def get_user_by_openid(db: Session, openid: str) -> User | None:
 
 
 def get_or_create_user_by_openid(
-    db: Session, openid: str, nickname: str | None = None, avatar: str | None = None
+    db: Session,
+    openid: str,
+    nickname: str | None = None,
+    avatar: str | None = None,
+    language: str | None = None,
 ) -> User:
     user = get_user_by_openid(db, openid)
     if user:
@@ -22,23 +27,39 @@ def get_or_create_user_by_openid(
             user.nickname = nickname
         if avatar is not None:
             user.avatar = avatar
+        if language is not None:
+            user.language = normalize_locale(language)
         db.add(user)
         db.commit()
         db.refresh(user)
         return user
 
-    user = User(wechat_openid=openid, nickname=nickname, avatar=avatar)
+    user = User(
+        wechat_openid=openid,
+        nickname=nickname,
+        avatar=avatar,
+        language=normalize_locale(language),
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
     return user
 
 
-def update_user_profile(db: Session, *, user: User, nickname: str | None = None, avatar: str | None = None) -> User:
+def update_user_profile(
+    db: Session,
+    *,
+    user: User,
+    nickname: str | None = None,
+    avatar: str | None = None,
+    language: str | None = None,
+) -> User:
     if nickname is not None:
         user.nickname = nickname.strip()
     if avatar is not None:
         user.avatar = avatar
+    if language is not None:
+        user.language = normalize_locale(language)
     db.add(user)
     db.commit()
     db.refresh(user)

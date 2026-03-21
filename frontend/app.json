@@ -13,7 +13,7 @@
   },
   "permission": {
     "scope.userLocation": {
-      "desc": "用于地图选点记录活动和费用地点"
+      "desc": "Used to choose map locations for schedules and finance records."
     }
   },
   "tabBar": {
@@ -24,15 +24,15 @@
     "list": [
       {
         "pagePath": "pages/assistant/index",
-        "text": "助手"
+        "text": "Assistant"
       },
       {
         "pagePath": "pages/schedule/index",
-        "text": "日程"
+        "text": "Schedule"
       },
       {
         "pagePath": "pages/finance/index",
-        "text": "费用"
+        "text": "Finance"
       }
     ]
   },

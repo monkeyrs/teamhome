@@ -1,12 +1,15 @@
 const { request } = require("../../utils/request");
 const { bootstrapSession, getCurrentTeamState } = require("../../utils/bootstrap");
+const { applyPageLocale } = require("../../utils/i18n");
 
-const DELETE_BUTTON_WIDTH = 88;
+const LEFT_ACTION_WIDTH = 88;
 const EDIT_BUTTON_WIDTH = 88;
 const HARD_ACTION_THRESHOLD = 160;
 const MAX_SWIPE = 220;
 const SWIPE_LAZINESS = 54;
 const DIRECTION_LOCK_THRESHOLD = 12;
+const FUTURE_PRELOAD_DAYS = 30;
+const TOP_LOAD_THRESHOLD = 80;
 
 function pad(value) {
   return `${value}`.padStart(2, "0");
@@ -16,9 +19,34 @@ function formatDate(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+function formatClock(date) {
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
 function toLocalIso(datePart, timePart, allDay) {
   const finalTime = allDay ? "00:00" : (timePart || "00:00");
   return `${datePart}T${finalTime}:00+08:00`;
+}
+
+function toWindowEndIso(date) {
+  return `${formatDate(date)}T23:59:59+08:00`;
+}
+
+function buildSchedulePath(teamId, options = {}) {
+  const query = [`team_id=${teamId}`];
+  if (options.windowStart) {
+    query.push(`window_start=${encodeURIComponent(options.windowStart)}`);
+  }
+  if (options.windowEnd) {
+    query.push(`window_end=${encodeURIComponent(options.windowEnd)}`);
+  }
+  return `/schedules?${query.join("&")}`;
 }
 
 function buildEmptyForm(dateText) {
@@ -42,23 +70,55 @@ Page({
     teams: [],
     teamIndex: 0,
     schedules: [],
+    visibleSchedules: [],
     hasTeam: true,
     teamReady: false,
     currentTeamId: "",
+    showPendingOnly: false,
+    futureWindowEnd: "",
+    loadingMoreFuture: false,
+    hasMoreFuture: true,
+    initialScrollDone: false,
     composerOpen: false,
     composerMode: "create",
     editingId: "",
     form: buildEmptyForm(formatDate(new Date())),
     swipeStartX: 0,
     swipeStartY: 0,
-    swipeDirection: ""
+    swipeDirection: "",
+    locale: "zh-CN",
+    i18n: {
+      app: {},
+      common: {},
+      page: {},
+      chart: {}
+    }
   },
 
   async onShow() {
+    this.applyLocale();
     const { teamId } = getCurrentTeamState();
     if (!this.data.teamReady || this.data.currentTeamId !== teamId) {
       await this.initPage();
     }
+  },
+
+  applyLocale() {
+    applyPageLocale(this, "schedule");
+    this.setSchedules((this.data.schedules || []).map((item) => this.normalizeSchedule(item)));
+  },
+
+  t(path, params = {}) {
+    const parts = path.split(".");
+    let current = this.data.i18n;
+    parts.forEach((part) => {
+      current = current && current[part];
+    });
+    let text = typeof current === "string" ? current : path;
+    Object.keys(params).forEach((key) => {
+      text = text.replace(`{${key}}`, params[key]);
+    });
+    return text;
   },
 
   async initPage() {
@@ -74,17 +134,21 @@ Page({
         composerOpen: false,
         composerMode: "create",
         editingId: "",
-        form: buildEmptyForm(today)
+        form: buildEmptyForm(today),
+        futureWindowEnd: "",
+        loadingMoreFuture: false,
+        hasMoreFuture: true,
+        initialScrollDone: false
       });
       if (!teamId) {
-        this.setData({ schedules: [] });
+        this.setData({ schedules: [], visibleSchedules: [] });
         return;
       }
       const teamIndex = Math.max(0, teams.findIndex((item) => item.id === teamId));
       this.setData({ teamIndex });
-      await this.loadSchedules(teamId);
+      await this.loadSchedules(teamId, { resetFutureWindow: true });
     } catch (err) {
-      wx.showToast({ title: "初始化失败", icon: "none" });
+      wx.showToast({ title: this.t("common.initFailed"), icon: "none" });
     } finally {
       this.setData({ loading: false });
     }
@@ -94,45 +158,114 @@ Page({
     return this.data.teams[this.data.teamIndex] || null;
   },
 
-  async loadSchedules(teamId) {
-    const data = await request({ path: `/schedules?team_id=${teamId}` });
-    const schedules = (data || [])
-      .map((item) => this.normalizeSchedule(item))
-      .sort((a, b) => b.recordSortTime - a.recordSortTime);
-    this.setData({
-      schedules
-    });
-  },
-
-  normalizeSchedule(item) {
-    const creatorName = item.creator_nickname || "团队成员";
-    return {
-      ...item,
-      creatorName,
-      startText: this.formatDisplayTime(item.start_time, item.is_all_day),
-      endText: item.end_time ? this.formatDisplayTime(item.end_time, item.is_all_day) : "未设置",
-      statusText: item.status === "completed" ? "已完成" : item.status === "cancelled" ? "已取消" : "待处理",
-      locationText: item.location || "未设置地点",
-      recordSortTime: new Date(item.start_time || item.created_at || 0).getTime() || 0,
-      offsetX: 0,
-      deleteWidth: 0,
-      editWidth: 0
-    };
-  },
-
   formatDisplayTime(value, isAllDay) {
-    if (!value) return "未设置";
+    if (!value) return this.t("common.unset");
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     const dateText = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-    return isAllDay ? `${dateText} 全天` : `${dateText} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    return isAllDay ? `${dateText} ${this.t("page.fullDay")}` : `${dateText} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
   },
 
-  resetForm() {
-    const dateText = this.data.form.date || formatDate(new Date());
+  normalizeSchedule(item) {
+    const status = item.status || "pending";
+    const nextStatus = status === "completed" ? "pending" : "completed";
+    return {
+      ...item,
+      creatorName: item.creator_nickname || this.t("common.teamMember"),
+      startText: this.formatDisplayTime(item.start_time, item.is_all_day),
+      endText: item.end_time ? this.formatDisplayTime(item.end_time, item.is_all_day) : this.t("common.unset"),
+      statusText: status === "completed"
+        ? this.t("page.statusCompleted")
+        : status === "cancelled"
+          ? this.t("page.statusCancelled")
+          : this.t("page.statusPending"),
+      locationText: item.location || this.t("common.unset"),
+      noteText: item.description || this.t("common.noNote"),
+      recordSortTime: new Date(item.start_time || item.created_at || 0).getTime() || 0,
+      offsetX: 0,
+      leftActionWidth: 0,
+      editWidth: 0,
+      leftActionText: nextStatus === "completed" ? this.t("page.markDone") : this.t("page.markPending"),
+      leftActionClass: nextStatus === "completed" ? "left-action-complete" : "left-action-pending"
+    };
+  },
+
+  async loadSchedules(teamId, options = {}) {
+    const futureWindowEnd = options.windowEnd || toWindowEndIso(addDays(new Date(), FUTURE_PRELOAD_DAYS));
+    const data = await request({ path: buildSchedulePath(teamId, { windowEnd: futureWindowEnd }) });
+    const schedules = (data || [])
+      .map((item) => this.normalizeSchedule(item))
+      .sort((a, b) => b.recordSortTime - a.recordSortTime);
+    this.setSchedules(schedules);
     this.setData({
-      form: buildEmptyForm(dateText)
+      futureWindowEnd,
+      hasMoreFuture: true
     });
+    if (options.resetFutureWindow) {
+      wx.nextTick(() => this.scrollToTodayAnchor());
+    }
+  },
+
+  setSchedules(schedules) {
+    const visibleSchedules = this.data.showPendingOnly
+      ? schedules.filter((item) => item.status !== "completed")
+      : schedules.slice();
+    this.setData({ schedules, visibleSchedules });
+  },
+
+  getTodayAnchorId() {
+    const today = formatDate(new Date());
+    const exact = this.data.visibleSchedules.find((item) => (item.start_time || "").slice(0, 10) === today);
+    if (exact) return `schedule-${exact.id}`;
+    const boundary = this.data.visibleSchedules.find((item) => (item.start_time || "").slice(0, 10) <= today);
+    return boundary ? `schedule-${boundary.id}` : "";
+  },
+
+  scrollToTodayAnchor() {
+    if (this.data.initialScrollDone) return;
+    const anchorId = this.getTodayAnchorId();
+    if (!anchorId) return;
+    const query = wx.createSelectorQuery();
+    query.select(`#${anchorId}`).boundingClientRect();
+    query.selectViewport().scrollOffset();
+    query.exec((res) => {
+      const rect = res && res[0];
+      const viewport = res && res[1];
+      if (!rect || !viewport) return;
+      const top = Math.max((viewport.scrollTop || 0) + rect.top - 120, 0);
+      wx.pageScrollTo({ scrollTop: top, duration: 0 });
+      this.setData({ initialScrollDone: true });
+    });
+  },
+
+  async loadMoreFutureSchedules() {
+    const team = this.currentTeam();
+    if (!team || this.data.loadingMoreFuture || !this.data.hasMoreFuture) return;
+    const currentEnd = this.data.futureWindowEnd ? new Date(this.data.futureWindowEnd) : addDays(new Date(), FUTURE_PRELOAD_DAYS);
+    const nextEnd = addDays(currentEnd, FUTURE_PRELOAD_DAYS);
+    const windowStart = this.data.futureWindowEnd;
+    const windowEnd = toWindowEndIso(nextEnd);
+    this.setData({ loadingMoreFuture: true });
+    try {
+      const data = await request({ path: buildSchedulePath(team.id, { windowStart, windowEnd }) });
+      const incoming = (data || []).map((item) => this.normalizeSchedule(item));
+      if (!incoming.length) {
+        this.setData({ hasMoreFuture: false, loadingMoreFuture: false });
+        return;
+      }
+      const mergedMap = new Map(this.data.schedules.map((item) => [item.id, item]));
+      incoming.forEach((item) => mergedMap.set(item.id, item));
+      const merged = Array.from(mergedMap.values()).sort((a, b) => b.recordSortTime - a.recordSortTime);
+      this.setSchedules(merged);
+      this.setData({
+        futureWindowEnd: windowEnd,
+        loadingMoreFuture: false,
+        hasMoreFuture: true
+      });
+    } catch (err) {
+      this.setData({ loadingMoreFuture: false });
+      wx.showToast({ title: this.t("common.loadFailed"), icon: "none" });
+    }
   },
 
   openCreateComposer() {
@@ -171,11 +304,19 @@ Page({
         placeLongitude: item.location_longitude,
         is_all_day: !!item.is_all_day,
         date: formatDate(start),
-        start_clock: `${pad(start.getHours())}:${pad(start.getMinutes())}`,
+        start_clock: formatClock(start),
         end_date: formatDate(end),
-        end_clock: `${pad(end.getHours())}:${pad(end.getMinutes())}`
+        end_clock: formatClock(end)
       }
     });
+  },
+
+  togglePendingFilter() {
+    const showPendingOnly = !this.data.showPendingOnly;
+    const visibleSchedules = showPendingOnly
+      ? this.data.schedules.filter((item) => item.status !== "completed")
+      : this.data.schedules.slice();
+    this.setData({ showPendingOnly, visibleSchedules });
   },
 
   goAssistantPage() {
@@ -201,7 +342,7 @@ Page({
       },
       fail: (err) => {
         if (err && /cancel/i.test(err.errMsg || "")) return;
-        wx.showToast({ title: "地图选点失败", icon: "none" });
+        wx.showToast({ title: this.t("common.mapPickFailed"), icon: "none" });
       }
     });
   },
@@ -238,15 +379,9 @@ Page({
     this.setData({ "form.is_all_day": !!event.detail.value.length });
   },
 
-  async submitSchedule() {
-    const team = this.currentTeam();
+  buildFormPayload() {
     const form = this.data.form;
-    if (!team || !form.title || !form.date) {
-      wx.showToast({ title: "请填写必填项", icon: "none" });
-      return;
-    }
-
-    const payload = {
+    return {
       title: form.title,
       description: form.description || null,
       location: form.placeName || null,
@@ -256,6 +391,17 @@ Page({
       start_time: toLocalIso(form.date, form.start_clock, form.is_all_day),
       end_time: toLocalIso(form.end_date || form.date, form.end_clock, form.is_all_day)
     };
+  },
+
+  async submitSchedule() {
+    const team = this.currentTeam();
+    const form = this.data.form;
+    if (!team || !form.title || !form.date) {
+      wx.showToast({ title: this.t("common.requiredFields"), icon: "none" });
+      return;
+    }
+
+    const payload = this.buildFormPayload();
 
     try {
       if (this.data.composerMode === "edit" && this.data.editingId) {
@@ -264,7 +410,7 @@ Page({
           method: "PUT",
           data: payload
         });
-        wx.showToast({ title: "修改成功", icon: "success" });
+        wx.showToast({ title: this.t("common.updateSuccess"), icon: "success" });
       } else {
         await request({
           path: "/schedules",
@@ -274,12 +420,15 @@ Page({
             team_id: team.id
           }
         });
-        wx.showToast({ title: "创建成功", icon: "success" });
+        wx.showToast({ title: this.t("common.createSuccess"), icon: "success" });
       }
       this.closeComposer();
       await this.loadSchedules(team.id);
     } catch (err) {
-      wx.showToast({ title: this.data.composerMode === "edit" ? "修改失败" : "创建失败", icon: "none" });
+      wx.showToast({
+        title: this.data.composerMode === "edit" ? this.t("common.updateFailed") : this.t("common.createFailed"),
+        icon: "none"
+      });
     }
   },
 
@@ -287,10 +436,16 @@ Page({
     const items = this.data[listKey].slice();
     items.forEach((item) => {
       item.offsetX = 0;
-      item.deleteWidth = 0;
+      item.leftActionWidth = 0;
       item.editWidth = 0;
     });
     this.setData({ [listKey]: items });
+  },
+
+  onPageScroll(event) {
+    if ((event.scrollTop || 0) <= TOP_LOAD_THRESHOLD) {
+      this.loadMoreFutureSchedules();
+    }
   },
 
   onSwipeStart(event) {
@@ -321,11 +476,11 @@ Page({
       return;
     }
 
-    const schedules = this.data.schedules.slice();
+    const schedules = this.data.visibleSchedules.slice();
     schedules.forEach((item, itemIndex) => {
       if (itemIndex !== index) {
         item.offsetX = 0;
-        item.deleteWidth = 0;
+        item.leftActionWidth = 0;
         item.editWidth = 0;
       }
     });
@@ -333,94 +488,127 @@ Page({
     const horizontalDistance = Math.abs(deltaX);
     if (horizontalDistance <= SWIPE_LAZINESS) {
       schedules[index].offsetX = 0;
-      schedules[index].deleteWidth = 0;
+      schedules[index].leftActionWidth = 0;
       schedules[index].editWidth = 0;
-      this.setData({ schedules });
+      this.setData({ visibleSchedules: schedules });
       return;
     }
 
-    let effectiveDeltaX = 0;
     if (deltaX < 0) {
-      effectiveDeltaX = Math.max(deltaX + SWIPE_LAZINESS, -MAX_SWIPE);
-      schedules[index].offsetX = effectiveDeltaX;
-      schedules[index].deleteWidth = Math.min(Math.abs(effectiveDeltaX), MAX_SWIPE);
+      const offsetX = Math.max(deltaX + SWIPE_LAZINESS, -MAX_SWIPE);
+      schedules[index].offsetX = offsetX;
+      schedules[index].leftActionWidth = Math.min(Math.abs(offsetX), MAX_SWIPE);
       schedules[index].editWidth = 0;
     } else {
-      effectiveDeltaX = Math.min(deltaX - SWIPE_LAZINESS, MAX_SWIPE);
-      schedules[index].offsetX = effectiveDeltaX;
-      schedules[index].editWidth = Math.min(effectiveDeltaX, MAX_SWIPE);
-      schedules[index].deleteWidth = 0;
+      const offsetX = Math.min(deltaX - SWIPE_LAZINESS, MAX_SWIPE);
+      schedules[index].offsetX = offsetX;
+      schedules[index].editWidth = Math.min(offsetX, MAX_SWIPE);
+      schedules[index].leftActionWidth = 0;
     }
-    this.setData({ schedules });
+    this.setData({ visibleSchedules: schedules });
   },
 
   async onSwipeEnd(event) {
     const index = Number(event.currentTarget.dataset.index);
     if (Number.isNaN(index)) return;
-    const schedules = this.data.schedules.slice();
+    const schedules = this.data.visibleSchedules.slice();
     const current = schedules[index];
     if (!current) return;
 
     if (this.data.swipeDirection !== "horizontal") {
       current.offsetX = 0;
-      current.deleteWidth = 0;
+      current.leftActionWidth = 0;
       current.editWidth = 0;
-      this.setData({ schedules, swipeDirection: "" });
+      this.setData({ visibleSchedules: schedules, swipeDirection: "" });
       return;
     }
 
     if (current.offsetX <= -HARD_ACTION_THRESHOLD) {
-      await this.deleteScheduleByIndex(index);
+      await this.toggleStatusByIndex(index);
       this.setData({ swipeDirection: "" });
       return;
     }
 
     if (current.offsetX >= HARD_ACTION_THRESHOLD) {
       this.openEditComposer(current);
-      this.closeSwipeRows("schedules");
+      this.closeSwipeRows("visibleSchedules");
       this.setData({ swipeDirection: "" });
       return;
     }
 
     if (current.offsetX < 0) {
-      const shouldOpenDelete = Math.abs(current.offsetX) >= DELETE_BUTTON_WIDTH / 2;
-      current.offsetX = shouldOpenDelete ? -DELETE_BUTTON_WIDTH : 0;
-      current.deleteWidth = shouldOpenDelete ? DELETE_BUTTON_WIDTH : 0;
+      const shouldOpenLeftAction = Math.abs(current.offsetX) >= LEFT_ACTION_WIDTH / 2;
+      current.offsetX = shouldOpenLeftAction ? -LEFT_ACTION_WIDTH : 0;
+      current.leftActionWidth = shouldOpenLeftAction ? LEFT_ACTION_WIDTH : 0;
       current.editWidth = 0;
     } else {
       const shouldOpenEdit = current.offsetX >= EDIT_BUTTON_WIDTH / 2;
       current.offsetX = shouldOpenEdit ? EDIT_BUTTON_WIDTH : 0;
       current.editWidth = shouldOpenEdit ? EDIT_BUTTON_WIDTH : 0;
-      current.deleteWidth = 0;
+      current.leftActionWidth = 0;
     }
 
-    this.setData({ schedules, swipeDirection: "" });
+    this.setData({ visibleSchedules: schedules, swipeDirection: "" });
   },
 
-  async onTapDelete(event) {
+  async onTapLeftAction(event) {
     const index = Number(event.currentTarget.dataset.index);
     if (Number.isNaN(index)) return;
-    await this.deleteScheduleByIndex(index);
+    await this.toggleStatusByIndex(index);
   },
 
   onTapEdit(event) {
     const index = Number(event.currentTarget.dataset.index);
     if (Number.isNaN(index)) return;
-    const current = this.data.schedules[index];
+    const current = this.data.visibleSchedules[index];
     this.openEditComposer(current);
-    this.closeSwipeRows("schedules");
+    this.closeSwipeRows("visibleSchedules");
   },
 
-  async deleteScheduleByIndex(index) {
-    const current = this.data.schedules[index];
+  async toggleStatusByIndex(index) {
+    const current = this.data.visibleSchedules[index];
     const team = this.currentTeam();
     if (!current || !team) return;
+    const nextStatus = current.status === "completed" ? "pending" : "completed";
     try {
-      await request({ path: `/schedules/${current.id}`, method: "DELETE" });
-      wx.showToast({ title: "已删除，可在助手中撤销", icon: "none" });
+      await request({
+        path: `/schedules/${current.id}`,
+        method: "PUT",
+        data: {
+          title: current.title,
+          description: current.description || null,
+          location: current.location || null,
+          location_latitude: current.location_latitude,
+          location_longitude: current.location_longitude,
+          is_all_day: !!current.is_all_day,
+          start_time: current.start_time,
+          end_time: current.end_time,
+          status: nextStatus
+        }
+      });
       await this.loadSchedules(team.id);
     } catch (err) {
-      wx.showToast({ title: "删除失败", icon: "none" });
+      wx.showToast({ title: this.t("common.updateFailed"), icon: "none" });
+    }
+  },
+
+  async confirmDeleteEditingSchedule() {
+    if (this.data.composerMode !== "edit" || !this.data.editingId) return;
+    const team = this.currentTeam();
+    if (!team) return;
+    const { confirm } = await wx.showModal({
+      title: this.t("page.deleteTitle"),
+      content: this.t("page.deleteContent"),
+      confirmColor: "#fa5151"
+    });
+    if (!confirm) return;
+    try {
+      await request({ path: `/schedules/${this.data.editingId}`, method: "DELETE" });
+      wx.showToast({ title: this.t("page.deleted"), icon: "success" });
+      this.closeComposer();
+      await this.loadSchedules(team.id);
+    } catch (err) {
+      wx.showToast({ title: this.t("common.deleteFailed"), icon: "none" });
     }
   }
 });
