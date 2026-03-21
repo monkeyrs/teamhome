@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str | None = None
     OPENAI_MODEL: str = "gpt-4.1-mini"
     OPENAI_AUDIO_MODEL: str = "gpt-4o-mini-transcribe"
+    OPENAI_SSL_VERIFY: bool = True
+    OPENAI_MODEL_FALLBACKS: str | None = None
+    OPENAI_AUTO_SWITCH_MODELS: bool = True
+    OPENAI_MODEL_MAX_ATTEMPTS: int = 6
     OPENROUTER_SITE_URL: str = "http://localhost"
     OPENROUTER_APP_NAME: str = "TeamHome"
 

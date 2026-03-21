@@ -1,13 +1,18 @@
-const { DEFAULT_LOCALE, applyTabBarLocale, normalizeLocale } = require("./utils/i18n");
+﻿const { DEFAULT_LOCALE, applyTabBarLocale, normalizeLocale } = require("./utils/i18n");
 
 App({
   globalData: {
-    apiBaseUrl: "http://127.0.0.1:8000",
+    //apiBaseUrl: "http://127.0.0.1:8000",
+    apiBaseUrl: "http://YOUR_SERVER_IP:8000",  //dont delete, production!
     token: "",
     currentTeamId: "",
     teams: [],
     user: null,
-    locale: DEFAULT_LOCALE
+    locale: DEFAULT_LOCALE,
+    dataSync: {
+      financeByTeam: {},
+      scheduleByTeam: {}
+    }
   },
   onLaunch() {
     const token = wx.getStorageSync("token") || "";

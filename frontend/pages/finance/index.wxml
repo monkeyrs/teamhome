@@ -44,8 +44,13 @@
 
       <view class="field-row compact-row category-row">
         <view class="field-group category-input-group">
-          <view class="field-label">{{i18n.page.category}}</view>
-          <input class="input-control" placeholder="{{i18n.page.categoryPlaceholder}}" value="{{form.category}}" bindinput="onInputCategory" />
+          <view class="field-label">{{i18n.page.nature || (locale === 'en-US' ? 'Nature' : (locale === 'ja-JP' ? '性質' : '性质'))}}</view>
+          <input
+            class="input-control"
+            placeholder="{{i18n.page.naturePlaceholder || (locale === 'en-US' ? 'Example: Transport, Meals, Lodging' : (locale === 'ja-JP' ? '例：交通・食費・宿泊' : '例如：交通、餐费、住宿'))}}"
+            value="{{form.category}}"
+            bindinput="onInputCategory"
+          />
         </view>
         <view class="field-group category-quick-group" wx:if="{{commonCategories.length >= 1}}">
           <view class="field-label">{{i18n.page.commonCategories}}</view>

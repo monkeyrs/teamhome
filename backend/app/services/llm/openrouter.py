@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from app.core.config import get_settings
+from app.services.llm.model_fallbacks import build_chat_candidates, parse_fallback_models
 
 
 def _normalize_base_url(base_url: str | None) -> str:
@@ -23,6 +24,21 @@ def _normalize_base_url(base_url: str | None) -> str:
 class ChatResult:
     text: str
     raw: dict[str, Any]
+    model: str | None = None
+
+
+_RETRYABLE_HTTP_STATUS = {402, 408, 409, 425, 429, 500, 502, 503, 504}
+_RETRYABLE_ERROR_TOKENS = {
+    "insufficient_quota",
+    "quota",
+    "rate limit",
+    "rate_limit",
+    "model_not_found",
+    "model is overloaded",
+    "temporarily unavailable",
+    "capacity",
+    "timeout",
+}
 
 
 class OpenAICompatibleClient:
@@ -38,6 +54,10 @@ class OpenAICompatibleClient:
         self.base_url = _normalize_base_url(settings.OPENAI_BASE_URL)
         self.default_model = settings.OPENAI_MODEL
         self.audio_model = settings.OPENAI_AUDIO_MODEL
+        self.ssl_verify = settings.OPENAI_SSL_VERIFY
+        self.auto_switch_models = bool(settings.OPENAI_AUTO_SWITCH_MODELS)
+        self.max_model_attempts = max(int(settings.OPENAI_MODEL_MAX_ATTEMPTS), 1)
+        self.model_fallbacks = parse_fallback_models(settings.OPENAI_MODEL_FALLBACKS)
         self.site_url = settings.OPENROUTER_SITE_URL
         self.app_name = settings.OPENROUTER_APP_NAME
 
@@ -52,6 +72,27 @@ class OpenAICompatibleClient:
             headers["X-OpenRouter-Title"] = self.app_name
         return headers
 
+    @staticmethod
+    def _is_retryable_http_error(exc: httpx.HTTPStatusError) -> bool:
+        status = exc.response.status_code
+        body = (exc.response.text or "").lower()
+        if status in _RETRYABLE_HTTP_STATUS:
+            return True
+        return any(token in body for token in _RETRYABLE_ERROR_TOKENS)
+
+    @staticmethod
+    def _is_retryable_transport_error(exc: Exception) -> bool:
+        return isinstance(
+            exc,
+            (
+                httpx.ConnectError,
+                httpx.ConnectTimeout,
+                httpx.ReadTimeout,
+                httpx.WriteTimeout,
+                httpx.RemoteProtocolError,
+            ),
+        )
+
     def chat(
         self,
         *,
@@ -59,33 +100,57 @@ class OpenAICompatibleClient:
         model: str | None = None,
         temperature: float | None = 0,
         max_tokens: int | None = None,
+        allow_auto_switch: bool = True,
     ) -> ChatResult:
-        payload: dict[str, Any] = {
-            "model": model or self.default_model,
-            "messages": messages,
-        }
+        candidates: list[str]
+        if allow_auto_switch and self.auto_switch_models:
+            candidates = build_chat_candidates(model or self.default_model, self.model_fallbacks)
+        else:
+            candidates = [model or self.default_model]
+        if not candidates:
+            raise RuntimeError("No model candidates available")
+
+        payload: dict[str, Any] = {"messages": messages}
         if temperature is not None:
             payload["temperature"] = temperature
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
 
-        with httpx.Client(timeout=45) as client:
-            response = client.post(
-                f"{self.base_url}/chat/completions",
-                headers=self._headers(),
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
+        last_error: Exception | None = None
+        attempt_limit = min(self.max_model_attempts, len(candidates))
+        with httpx.Client(timeout=45, verify=self.ssl_verify) as client:
+            for idx, candidate in enumerate(candidates[:attempt_limit]):
+                payload["model"] = candidate
+                try:
+                    response = client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers=self._headers(),
+                        json=payload,
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    text = data["choices"][0]["message"]["content"]
+                    if isinstance(text, list):
+                        text = "".join(
+                            part.get("text", "")
+                            for part in text
+                            if isinstance(part, dict) and part.get("type") == "text"
+                        )
+                    return ChatResult(text=str(text or "").strip(), raw=data, model=candidate)
+                except httpx.HTTPStatusError as exc:
+                    last_error = exc
+                    can_retry = self._is_retryable_http_error(exc) and idx + 1 < attempt_limit
+                    if not can_retry:
+                        raise
+                except Exception as exc:
+                    last_error = exc
+                    can_retry = self._is_retryable_transport_error(exc) and idx + 1 < attempt_limit
+                    if not can_retry:
+                        raise
 
-        text = data["choices"][0]["message"]["content"]
-        if isinstance(text, list):
-            text = "".join(
-                part.get("text", "")
-                for part in text
-                if isinstance(part, dict) and part.get("type") == "text"
-            )
-        return ChatResult(text=str(text or "").strip(), raw=data)
+        if last_error:
+            raise last_error
+        raise RuntimeError("LLM call failed without explicit exception")
 
     def chat_json(
         self,
@@ -155,6 +220,7 @@ class OpenAICompatibleClient:
                 }
             ],
             temperature=0,
+            allow_auto_switch=False,
         )
         return result.text
 

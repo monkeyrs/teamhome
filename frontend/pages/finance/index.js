@@ -1,6 +1,7 @@
 const { request } = require("../../utils/request");
 const { bootstrapSession, getCurrentTeamState } = require("../../utils/bootstrap");
 const { applyPageLocale } = require("../../utils/i18n");
+const { getDataVersion } = require("../../utils/data-sync");
 
 const COPY_BUTTON_WIDTH = 88;
 const EDIT_BUTTON_WIDTH = 88;
@@ -59,6 +60,7 @@ Page({
     hasTeam: true,
     teamReady: false,
     currentTeamId: "",
+    financeSyncVersion: 0,
     composerOpen: false,
     composerMode: "create",
     editingId: "",
@@ -80,6 +82,19 @@ Page({
     const { teamId } = getCurrentTeamState();
     if (!this.data.teamReady || this.data.currentTeamId !== teamId) {
       await this.initPage();
+      return;
+    }
+    const syncVersion = getDataVersion("finance", teamId);
+    if (syncVersion > (this.data.financeSyncVersion || 0)) {
+      this.setData({ loading: true });
+      try {
+        await Promise.all([this.loadFinance(teamId), this.loadCommonCategories(teamId)]);
+        this.setData({ financeSyncVersion: syncVersion });
+      } catch (err) {
+        wx.showToast({ title: this.t("common.loadFailed"), icon: "none" });
+      } finally {
+        this.setData({ loading: false });
+      }
     }
   },
 
@@ -116,7 +131,8 @@ Page({
         composerMode: "create",
         editingId: "",
         form: buildEmptyForm(),
-        commonCategories: []
+        commonCategories: [],
+        financeSyncVersion: 0
       });
       if (!teamId) {
         this.setData({ records: [], visibleRecords: [] });
@@ -125,6 +141,7 @@ Page({
       const teamIndex = Math.max(0, teams.findIndex((item) => item.id === teamId));
       this.setData({ teamIndex });
       await Promise.all([this.loadFinance(teamId), this.loadCommonCategories(teamId)]);
+      this.setData({ financeSyncVersion: getDataVersion("finance", teamId) });
     } catch (err) {
       wx.showToast({ title: this.t("common.initFailed"), icon: "none" });
     } finally {

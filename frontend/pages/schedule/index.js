@@ -1,6 +1,7 @@
 const { request } = require("../../utils/request");
 const { bootstrapSession, getCurrentTeamState } = require("../../utils/bootstrap");
 const { applyPageLocale } = require("../../utils/i18n");
+const { getDataVersion } = require("../../utils/data-sync");
 
 const LEFT_ACTION_WIDTH = 88;
 const EDIT_BUTTON_WIDTH = 88;
@@ -74,6 +75,7 @@ Page({
     hasTeam: true,
     teamReady: false,
     currentTeamId: "",
+    scheduleSyncVersion: 0,
     showPendingOnly: false,
     futureWindowEnd: "",
     loadingMoreFuture: false,
@@ -100,6 +102,19 @@ Page({
     const { teamId } = getCurrentTeamState();
     if (!this.data.teamReady || this.data.currentTeamId !== teamId) {
       await this.initPage();
+      return;
+    }
+    const syncVersion = getDataVersion("schedule", teamId);
+    if (syncVersion > (this.data.scheduleSyncVersion || 0)) {
+      this.setData({ loading: true });
+      try {
+        await this.loadSchedules(teamId);
+        this.setData({ scheduleSyncVersion: syncVersion });
+      } catch (err) {
+        wx.showToast({ title: this.t("common.loadFailed"), icon: "none" });
+      } finally {
+        this.setData({ loading: false });
+      }
     }
   },
 
@@ -138,7 +153,8 @@ Page({
         futureWindowEnd: "",
         loadingMoreFuture: false,
         hasMoreFuture: true,
-        initialScrollDone: false
+        initialScrollDone: false,
+        scheduleSyncVersion: 0
       });
       if (!teamId) {
         this.setData({ schedules: [], visibleSchedules: [] });
@@ -147,6 +163,7 @@ Page({
       const teamIndex = Math.max(0, teams.findIndex((item) => item.id === teamId));
       this.setData({ teamIndex });
       await this.loadSchedules(teamId, { resetFutureWindow: true });
+      this.setData({ scheduleSyncVersion: getDataVersion("schedule", teamId) });
     } catch (err) {
       wx.showToast({ title: this.t("common.initFailed"), icon: "none" });
     } finally {

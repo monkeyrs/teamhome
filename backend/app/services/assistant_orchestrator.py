@@ -78,6 +78,23 @@ def _normalize_optional_text(value: object) -> str | None:
     return text or None
 
 
+def _normalize_finance_category_value(value: object) -> str | None:
+    text = _normalize_optional_text(value)
+    if not text:
+        return None
+    mapping = {
+        "food": "餐费",
+        "meal": "餐费",
+        "transport": "交通",
+        "traffic": "交通",
+        "taxi": "交通",
+        "lodging": "住宿",
+        "hotel": "住宿",
+        "accommodation": "住宿",
+    }
+    return mapping.get(text.casefold(), text)
+
+
 def _format_dt(value: dt.datetime | None, locale: str) -> str:
     if value is None:
         return translate(locale, "assistant.not_set")
@@ -164,14 +181,24 @@ def _deserialize_slots(intent: str, slots: dict) -> dict:
 def _extract_finance_slots(message: str) -> dict:
     text = _normalize_text(message)
     parsed = parse_finance_text(text)
-    category = parsed.get("category")
+    category = _normalize_finance_category_value(parsed.get("category"))
     if category == "other":
         category = None
     record_type = parsed.get("type")
     has_type_hint = _contains_any(text, TERM_SETS["expense_hints"] | TERM_SETS["income_hints"])
+    if parsed.get("type_confidence") == "low":
+        record_type = None
     if not has_type_hint and parsed.get("amount") is None:
         record_type = None
-    return {"amount": parsed.get("amount"), "type": record_type, "category": category}
+    occurred_at = _parse_iso_datetime(parsed.get("occurred_at"))
+    note = _normalize_optional_text(parsed.get("note") or text)
+    return {
+        "amount": parsed.get("amount"),
+        "type": record_type,
+        "category": category,
+        "occurred_at": occurred_at,
+        "note": note,
+    }
 
 
 def _extract_schedule_slots(message: str) -> dict:
@@ -275,7 +302,7 @@ def _plan_intents(message: str) -> tuple[list[str], bool]:
         "You have exactly 4 skills:\n"
         "1) create_finance\n"
         "- purpose: create a finance record\n"
-        "- required params: amount(number), type(expense|income), category(string)\n"
+        "- required params: amount(number), type(expense|income), category(nature string)\n"
         "- optional params: occurred_at(ISO8601), location(string), note(string)\n"
         "2) query_finance\n"
         "- purpose: query finance records/summary\n"
@@ -328,7 +355,7 @@ def _tool_slot_guide(intent: str) -> str:
     if intent == INTENT_CREATE_FINANCE:
         return (
             "intent=create_finance\n"
-            "required: amount(number), type(expense|income), category(string)\n"
+            "required: amount(number), type(expense|income), category(nature string)\n"
             "optional: occurred_at(ISO8601), location(string), note(string)"
         )
     if intent == INTENT_CREATE_SCHEDULE:
@@ -361,7 +388,7 @@ def _coerce_llm_slots(intent: str, slots: dict) -> dict:
             normalized["type"] = record_type
         category = slots.get("category")
         if category not in (None, ""):
-            normalized["category"] = str(category).strip()
+            normalized["category"] = _normalize_finance_category_value(category)
         occurred_at = _parse_iso_datetime(slots.get("occurred_at"))
         if occurred_at:
             normalized["occurred_at"] = occurred_at.isoformat()
@@ -502,6 +529,8 @@ def _merge_slots(intent: str, current_slots: dict, incoming_slots: dict) -> dict
     merged = dict(current_slots or {})
     for key, value in (incoming_slots or {}).items():
         if value not in (None, ""):
+            if intent == INTENT_CREATE_FINANCE and key == "note" and merged.get("note") not in (None, ""):
+                continue
             merged[key] = value
     return _with_default_schedule_end(merged) if intent == INTENT_CREATE_SCHEDULE else merged
 

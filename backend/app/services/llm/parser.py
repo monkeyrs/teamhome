@@ -24,6 +24,49 @@ def _guess_finance_type(text: str) -> str:
     return "expense"
 
 
+def _has_income_hint(text: str) -> bool:
+    lowered = text.casefold()
+    return any(word.casefold() in lowered for word in PARSER_DATA["finance_income_words"])
+
+
+def _has_expense_hint(text: str) -> bool:
+    lowered = text.casefold()
+    return any(word.casefold() in lowered for word in PARSER_DATA["finance_expense_words"])
+
+
+def _infer_finance_type_with_llm(text: str, fallback: str) -> str:
+    client = get_llm_client()
+    if not client:
+        return fallback
+    system = (
+        "Classify finance record type from user text.\n"
+        "Always reason in English.\n"
+        "Return JSON only: {\"type\":\"income\"} or {\"type\":\"expense\"}."
+    )
+    try:
+        data = client.chat_json(system=system, user=text) or {}
+    except Exception:
+        return fallback
+    record_type = str(data.get("type") or "").strip().lower()
+    return record_type if record_type in {"income", "expense"} else fallback
+
+
+def _resolve_finance_type(text: str, *, use_llm: bool) -> tuple[str, str]:
+    has_income_hint = _has_income_hint(text)
+    has_expense_hint = _has_expense_hint(text)
+
+    if has_income_hint and not has_expense_hint:
+        return "income", "high"
+    if has_expense_hint and not has_income_hint:
+        return "expense", "high"
+
+    fallback = _guess_finance_type(text)
+    if not use_llm:
+        return fallback, "low"
+    resolved = _infer_finance_type_with_llm(text, fallback)
+    return resolved, "low"
+
+
 def _guess_finance_category(text: str) -> str:
     lowered = text.casefold()
     for keyword, category in PARSER_DATA["finance_category_mapping"]:
@@ -81,8 +124,8 @@ def _has_schedule_time_hint(text: str) -> bool:
     return _contains_term(text, markers)
 
 
-def _parse_schedule_datetime(text: str) -> dt.datetime | None:
-    settings = {"RELATIVE_BASE": _now_local(), "PREFER_DATES_FROM": "future"}
+def _parse_datetime(text: str, *, prefer_dates_from: str) -> dt.datetime | None:
+    settings = {"RELATIVE_BASE": _now_local(), "PREFER_DATES_FROM": prefer_dates_from}
     language_candidates: list[list[str] | None] = [["zh", "en", "ja"], ["zh"], ["en"], ["ja"], None]
     for languages in language_candidates:
         try:
@@ -95,6 +138,54 @@ def _parse_schedule_datetime(text: str) -> dt.datetime | None:
         if parsed:
             return parsed
     return None
+
+
+def _parse_schedule_datetime(text: str) -> dt.datetime | None:
+    return _parse_datetime(text, prefer_dates_from="future")
+
+
+def _infer_finance_default_hour(text: str, category: str | None) -> int | None:
+    for profile in PARSER_DATA["finance_time_profiles"]:
+        terms = set(profile.get("terms") or [])
+        if _contains_term(text, terms):
+            return int(profile.get("hour"))
+    if category == "food":
+        return int(PARSER_DATA["finance_food_default_hour"])
+    if (
+        _contains_term(text, RELATIVE_DAY_TERMS["yesterday"])
+        or _contains_term(text, RELATIVE_DAY_TERMS["today"])
+        or _contains_term(text, RELATIVE_DAY_TERMS["tomorrow"])
+    ):
+        return int(PARSER_DATA["finance_relative_default_hour"])
+    return None
+
+
+def _infer_finance_occurred_at(text: str, category: str | None) -> dt.datetime | None:
+    base = _now_local()
+    parsed = _parse_datetime(text, prefer_dates_from="past")
+
+    if not parsed:
+        if _contains_term(text, RELATIVE_DAY_TERMS["yesterday"]):
+            parsed = base - dt.timedelta(days=1)
+        elif _contains_term(text, RELATIVE_DAY_TERMS["today"]):
+            parsed = base
+        elif _contains_term(text, RELATIVE_DAY_TERMS["tomorrow"]):
+            parsed = base + dt.timedelta(days=1)
+        else:
+            parsed = base
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=base.tzinfo)
+
+    if not _CLOCK_RE.search(text):
+        default_hour = _infer_finance_default_hour(text, category)
+        if default_hour is not None:
+            parsed = parsed.replace(hour=default_hour, minute=0, second=0, microsecond=0)
+        else:
+            parsed = parsed.replace(second=0, microsecond=0)
+    else:
+        parsed = parsed.replace(second=0, microsecond=0)
+    return parsed
 
 
 def _infer_relative_schedule_start(text: str) -> dt.datetime | None:
@@ -130,40 +221,77 @@ def _infer_relative_schedule_start(text: str) -> dt.datetime | None:
 def parse_finance_text(text: str, *, use_llm: bool = True) -> dict:
     text = (text or "").strip()
     if not text:
-        return {"amount": None, "type": None, "category": None}
+        return {"amount": None, "type": None, "type_confidence": "low", "category": None, "occurred_at": None, "note": None}
 
     amount = _extract_amount(text)
-    record_type = _guess_finance_type(text)
+    record_type, type_confidence = _resolve_finance_type(text, use_llm=use_llm)
     category = _guess_finance_category(text)
+    occurred_at = _infer_finance_occurred_at(text, category)
 
     if amount is not None and amount < 0:
         amount = abs(amount)
         record_type = "expense" if record_type == "income" else "income"
+        type_confidence = "high"
 
     if amount is not None:
-        return {"amount": amount, "type": record_type, "category": category}
+        return {
+            "amount": amount,
+            "type": record_type,
+            "type_confidence": type_confidence,
+            "category": category,
+            "occurred_at": _iso_no_seconds(occurred_at) if occurred_at else None,
+            "note": text,
+        }
 
     if not use_llm:
-        return {"amount": None, "type": record_type, "category": category}
+        return {
+            "amount": None,
+            "type": record_type,
+            "type_confidence": type_confidence,
+            "category": category,
+            "occurred_at": _iso_no_seconds(occurred_at) if occurred_at else None,
+            "note": text,
+        }
 
     client = get_llm_client()
     if not client:
-        return {"amount": None, "type": record_type, "category": category}
+        return {
+            "amount": None,
+            "type": record_type,
+            "type_confidence": type_confidence,
+            "category": category,
+            "occurred_at": _iso_no_seconds(occurred_at) if occurred_at else None,
+            "note": text,
+        }
 
     system = (
         "Extract finance fields from user text.\n"
         "Always reason and classify in English.\n"
-        "Return JSON only with fields: amount(number|null), type(income|expense|null), category(string|null)."
+        "Return JSON only with fields: amount(number|null), type(income|expense|null), category(string|null), occurred_at(ISO8601|null)."
     )
     try:
         data = client.chat_json(system=system, user=text) or {}
     except Exception:
-        return {"amount": None, "type": record_type, "category": category}
+        return {
+            "amount": None,
+            "type": record_type,
+            "type_confidence": type_confidence,
+            "category": category,
+            "occurred_at": _iso_no_seconds(occurred_at) if occurred_at else None,
+            "note": text,
+        }
+
+    llm_type = str(data.get("type") or "").strip().lower()
+    if llm_type in {"income", "expense"}:
+        record_type = llm_type
 
     return {
         "amount": data.get("amount"),
-        "type": data.get("type") or record_type,
+        "type": record_type,
+        "type_confidence": type_confidence,
         "category": data.get("category") or category,
+        "occurred_at": data.get("occurred_at") or (_iso_no_seconds(occurred_at) if occurred_at else None),
+        "note": text,
     }
 
 

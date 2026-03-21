@@ -1,33 +1,39 @@
-const { request, setCurrentTeamId, setCurrentUser } = require("../../utils/request");
-const { bootstrapSession, getCurrentTeamState } = require("../../utils/bootstrap");
+const { setCurrentTeamId, setCurrentUser } = require("../../utils/request");
+const { bootstrapSession } = require("../../utils/bootstrap");
 const { applyPageLocale, setLocale } = require("../../utils/i18n");
+const { markDataDirty } = require("../../utils/data-sync");
+const assistantApi = require("./modules/api");
+const { resolveTeamIndex, resolveCurrentTeam, syncTeamsToApp } = require("./modules/team-state");
+const {
+  createInitialData,
+  translate,
+  formatAnswerStatus: mapAnswerStatusText,
+  quickReplyText,
+  mapAssistantResponse
+} = require("./modules/view-state");
+
+function syncDirtyScopesFromAssistant(teamId, response) {
+  if (!teamId || !response || response.status !== "executed") return;
+
+  const scopes = new Set();
+  const results = response.data && response.data.results;
+  if (Array.isArray(results)) {
+    results.forEach((item) => {
+      if (!item || item.status !== "executed") return;
+      if (item.intent === "create_finance") scopes.add("finance");
+      if (item.intent === "create_schedule") scopes.add("schedule");
+    });
+  }
+  if (response.intent === "undo") {
+    scopes.add("finance");
+    scopes.add("schedule");
+  }
+  if (scopes.size === 0) return;
+  markDataDirty({ teamId, scopes: Array.from(scopes) });
+}
 
 Page({
-  data: {
-    teams: [],
-    teamIndex: 0,
-    teamName: "",
-    teamPanelOpen: false,
-    question: "",
-    loading: false,
-    answer: "",
-    answerDataText: "",
-    answerStatus: "",
-    answerStatusLabel: "",
-    answerCanUndo: false,
-    assistantSessionId: "",
-    assistantMissingSlots: [],
-    firstMissingSlot: "",
-    locale: "zh-CN",
-    localeMenuOpen: false,
-    languageOptions: [],
-    i18n: {
-      app: {},
-      common: {},
-      page: {},
-      chart: {}
-    }
-  },
+  data: createInitialData(),
 
   async onShow() {
     this.applyLocale();
@@ -42,50 +48,28 @@ Page({
   },
 
   t(path, params = {}) {
-    const parts = path.split(".");
-    let current = this.data.i18n;
-    parts.forEach((part) => {
-      current = current && current[part];
-    });
-    let text = typeof current === "string" ? current : path;
-    Object.keys(params).forEach((key) => {
-      text = text.replace(`{${key}}`, params[key]);
-    });
-    return text;
+    return translate(this.data.i18n, path, params);
   },
 
   formatAnswerStatus(status) {
-    const mapping = {
-      awaiting_confirmation: this.data.i18n.common.confirm || status,
-      collecting: this.t("page.collecting"),
-      blocked: this.t("page.blocked"),
-      collecting_conflict_update: this.t("page.conflictUpdate"),
-      cancelled: this.data.i18n.common.cancel || status,
-      executed: ""
-    };
-    return mapping[status] || status || "";
+    return mapAnswerStatusText(status, {
+      t: (path) => this.t(path),
+      common: this.data.i18n.common
+    });
   },
 
   getQuickReplyMessage(token) {
-    const mapping = {
-      confirm: this.data.i18n.common.confirm,
-      cancel: this.data.i18n.common.cancel,
-      expense: this.t("page.expense"),
-      income: this.t("page.income"),
-      food: this.t("page.quickFood"),
-      transport: this.t("page.quickTransport"),
-      shopping: this.t("page.quickShopping"),
-      reschedule: this.t("page.reschedule"),
-      force_create: this.t("page.createAnyway")
-    };
-    return mapping[token] || "";
+    return quickReplyText(token, {
+      t: (path) => this.t(path),
+      common: this.data.i18n.common
+    });
   },
 
   async initPage() {
     this.setData({ loading: true });
     try {
       const { teamId, teams } = await bootstrapSession();
-      const teamIndex = Math.max(0, teams.findIndex((item) => item.id === teamId));
+      const teamIndex = resolveTeamIndex(teams, teamId);
       this.setData({
         teams,
         teamIndex: teamIndex < 0 ? 0 : teamIndex,
@@ -99,14 +83,7 @@ Page({
   },
 
   currentTeam() {
-    const { teamId } = getCurrentTeamState();
-    if (teamId) {
-      const matched = (this.data.teams || []).find((item) => item.id === teamId);
-      if (matched) {
-        return matched;
-      }
-    }
-    return this.data.teams[this.data.teamIndex] || null;
+    return resolveCurrentTeam(this.data.teams, this.data.teamIndex);
   },
 
   toggleTeamPanel() {
@@ -124,11 +101,7 @@ Page({
       return;
     }
     try {
-      const user = await request({
-        path: "/auth/me",
-        method: "PUT",
-        data: { language: locale }
-      });
+      const user = await assistantApi.updateLanguage(locale);
       setCurrentUser(user);
       setLocale(locale);
       this.setData({ localeMenuOpen: false });
@@ -157,19 +130,12 @@ Page({
   },
 
   async refreshTeams() {
-    const teams = await request({ path: "/teams" });
-    const currentTeamId = getApp().globalData.currentTeamId || "";
-    const teamIndex = Math.max(0, teams.findIndex((item) => item.id === currentTeamId));
+    const teams = await assistantApi.listTeams();
+    const teamIndex = syncTeamsToApp(teams);
     this.setData({
       teams,
       teamIndex: teamIndex < 0 ? 0 : teamIndex
     });
-    getApp().globalData.teams = teams;
-    if (teams.length > 0) {
-      setCurrentTeamId(teams[Math.max(0, teamIndex)].id);
-    } else {
-      setCurrentTeamId("");
-    }
   },
 
   async createOrJoinTeam() {
@@ -179,11 +145,7 @@ Page({
       return;
     }
     try {
-      const team = await request({
-        path: "/teams",
-        method: "POST",
-        data: { name }
-      });
+      const team = await assistantApi.createTeam(name);
       await this.refreshTeams();
       const teamIndex = this.data.teams.findIndex((item) => item.id === team.id);
       this.setData({
@@ -207,10 +169,7 @@ Page({
       success: async (res) => {
         if (!res.confirm) return;
         try {
-          await request({
-            path: `/teams/${teamId}/members/me`,
-            method: "DELETE"
-          });
+          await assistantApi.leaveTeam(teamId);
           await this.refreshTeams();
           this.setData({ teamPanelOpen: this.data.teams.length === 0 });
           wx.showToast({ title: this.t("page.leaveTeamSuccess"), icon: "success" });
@@ -235,26 +194,18 @@ Page({
 
     this.setData({ loading: true });
     try {
-      const data = await request({
-        path: "/assistant/execute",
-        method: "POST",
-        data: {
-          team_id: team.id,
-          message: question,
-          session_id: this.data.assistantSessionId || null
-        }
+      const data = await assistantApi.executeAssistant({
+        teamId: team.id,
+        message: question,
+        sessionId: this.data.assistantSessionId
       });
-      this.setData({
-        question: "",
-        answer: data.reply || "",
-        answerStatus: data.status || "",
-        answerStatusLabel: this.formatAnswerStatus(data.status || ""),
-        answerCanUndo: !!(data.data && data.data.can_undo),
-        assistantSessionId: data.session_id || "",
-        assistantMissingSlots: data.missing_slots || [],
-        firstMissingSlot: (data.missing_slots && data.missing_slots[0]) || "",
-        answerDataText: ""
-      });
+      syncDirtyScopesFromAssistant(team.id, data);
+      this.setData(
+        mapAssistantResponse(data, {
+          clearQuestion: true,
+          formatStatus: (status) => this.formatAnswerStatus(status)
+        })
+      );
     } catch (err) {
       wx.showToast({ title: this.t("common.sendFailed"), icon: "none" });
     } finally {
@@ -276,23 +227,17 @@ Page({
       wx.showToast({ title: this.t("page.noTeamJoined"), icon: "none" });
       return;
     }
+
     this.setData({ loading: true });
     try {
-      const data = await request({
-        path: "/assistant/undo",
-        method: "POST",
-        data: { team_id: team.id }
-      });
-      this.setData({
-        answer: data.reply || "",
-        answerStatus: data.status || "",
-        answerStatusLabel: this.formatAnswerStatus(data.status || ""),
-        answerCanUndo: !!(data.data && data.data.can_undo),
-        assistantSessionId: data.session_id || "",
-        assistantMissingSlots: data.missing_slots || [],
-        firstMissingSlot: (data.missing_slots && data.missing_slots[0]) || "",
-        answerDataText: ""
-      });
+      const data = await assistantApi.undoAssistant(team.id);
+      syncDirtyScopesFromAssistant(team.id, data);
+      this.setData(
+        mapAssistantResponse(data, {
+          clearQuestion: false,
+          formatStatus: (status) => this.formatAnswerStatus(status)
+        })
+      );
     } catch (err) {
       wx.showToast({ title: this.t("common.sendFailed"), icon: "none" });
     } finally {
