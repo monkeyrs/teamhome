@@ -13,7 +13,7 @@
   },
   "permission": {
     "scope.userLocation": {
-      "desc": "Used to choose map locations for schedules and finance records."
+      "desc": "用于选择日程和费用位置"
     }
   },
   "tabBar": {

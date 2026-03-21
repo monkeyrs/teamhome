@@ -1,6 +1,3 @@
 {
-  "navigationBarTitleText": "Finance",
-  "usingComponents": {
-    "finance-chart": "../../components/finance-chart/index"
-  }
+  "navigationBarTitleText": "Finance"
 }

@@ -1,26 +1,21 @@
 <view class="page-shell">
   <view class="page-stack">
-    <view class="hero-card assistant-hero">
-      <view class="locale-trigger" bindtap="toggleLocaleMenu">{{i18n.app.languageButton}}</view>
+    <view class="card info-card assistant-top-card">
+      <view class="info-head">
+        <view class="info-copy">{{i18n.page.heroDesc}}</view>
+        <view class="locale-trigger" bindtap="toggleLocaleMenu">{{i18n.app.languageButton}}</view>
+      </view>
       <view class="locale-menu" wx:if="{{localeMenuOpen}}">
         <block wx:for="{{languageOptions}}" wx:key="code">
           <view class="locale-option {{locale === item.code ? 'locale-option-active' : ''}}" data-locale="{{item.code}}" bindtap="selectLanguage">{{item.label}}</view>
         </block>
       </view>
-      <view class="hero-eyebrow">{{i18n.page.heroEyebrow}}</view>
-      <view class="hero-title">{{i18n.page.heroTitle}}</view>
-      <view class="hero-desc">{{i18n.page.heroDesc}}</view>
     </view>
 
     <view class="card compact-card">
-      <view class="section-header">
-        <view class="section-title">{{i18n.page.currentTeam}}</view>
-        <view class="section-meta">{{teams.length}} {{i18n.page.teamCountSuffix}}</view>
-      </view>
-
       <view class="team-compact" bindtap="toggleTeamPanel">
-        <view class="team-name">{{teams.length ? teams[teamIndex].name : i18n.page.noTeam}}</view>
-        <view class="team-arrow">{{teamPanelOpen ? i18n.common.collapse : i18n.common.switch}}</view>
+        <view class="team-line">{{i18n.page.currentTeam}}: {{teams.length ? teams[teamIndex].name : i18n.page.noTeam}}</view>
+        <view class="team-switch-btn">{{teamPanelOpen ? i18n.common.collapse : i18n.common.switch}}</view>
       </view>
 
       <view wx:if="{{teamPanelOpen}}" class="team-panel">
@@ -32,40 +27,29 @@
             value="{{teamName}}"
             bindinput="onTeamNameInput"
           />
-          <button class="mini-action" bindtap="createOrJoinTeam">{{i18n.common.join}}</button>
+          <button class="btn-primary team-join-btn" bindtap="createOrJoinTeam">{{i18n.common.join}}</button>
         </view>
 
         <block wx:for="{{teams}}" wx:key="id">
           <view class="team-option">
             <view class="team-option-name" data-index="{{index}}" bindtap="onSelectTeam">{{item.name}}</view>
-            <view class="team-remove" data-team-id="{{item.id}}" data-team-name="{{item.name}}" bindtap="confirmLeaveTeam">{{i18n.common.leave}}</view>
+            <view class="team-remove team-switch-btn" data-team-id="{{item.id}}" data-team-name="{{item.name}}" bindtap="confirmLeaveTeam">{{i18n.common.leave}}</view>
           </view>
         </block>
       </view>
     </view>
 
     <view class="card form-card">
-      <view class="section-header">
-        <view class="section-title">{{i18n.page.assistantTitle}}</view>
-        <view class="section-meta">{{i18n.page.assistantMeta}}</view>
-      </view>
-
-      <view class="field-group">
-        <view class="field-label">{{i18n.page.questionLabel}}</view>
+      <view class="assistant-input-row">
         <textarea
-          class="textarea-control"
-          placeholder="{{i18n.page.questionPlaceholder}}"
+          class="textarea-control assistant-textarea assistant-textarea-inline"
+          placeholder="{{i18n.page.assistantInputPlaceholder}}"
           value="{{question}}"
           bindinput="onQuestionInput"
-          auto-height="true"
+          auto-height="false"
           cursor-spacing="20"
         />
-      </view>
-
-      <view class="input-tip">{{i18n.page.inputTip}}</view>
-
-      <view class="assistant-actions">
-        <button class="btn-primary send-btn" loading="{{loading}}" bindtap="askAssistant">{{i18n.page.send}}</button>
+        <button class="btn-primary send-btn send-btn-inline" loading="{{loading}}" bindtap="askAssistant">{{i18n.page.send}}</button>
       </view>
     </view>
 
@@ -73,11 +57,11 @@
       <view class="section-header answer-header">
         <view class="section-title">{{i18n.page.answerTitle}}</view>
         <view class="answer-tools" wx:if="{{answerStatus === 'awaiting_confirmation'}}">
-          <view class="answer-top-chip" data-token="confirm" bindtap="onQuickReply">{{i18n.common.confirm}}</view>
-          <view class="answer-top-chip answer-top-chip-secondary" data-token="cancel" bindtap="onQuickReply">{{i18n.common.cancel}}</view>
+          <view class="answer-top-chip answer-top-chip-cancel" data-token="cancel" bindtap="onQuickReply">{{i18n.common.cancel}}</view>
+          <view class="answer-top-chip answer-top-chip-confirm" data-token="confirm" bindtap="onQuickReply">{{i18n.common.confirm}}</view>
         </view>
         <view class="answer-tools" wx:if="{{answerStatus !== 'awaiting_confirmation' && answerCanUndo}}">
-          <view class="answer-top-chip" bindtap="undoAssistantBatch">{{i18n.common.undo}}</view>
+          <view class="answer-top-chip answer-top-chip-undo" bindtap="undoAssistantBatch">{{i18n.common.undo}}</view>
         </view>
       </view>
 

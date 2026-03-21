@@ -26,7 +26,6 @@ INTENT_QUERY_SCHEDULE = "query_schedule"
 INTENT_UNSUPPORTED = "unsupported"
 
 STATUS_COLLECTING = "collecting"
-STATUS_AWAITING_CONFIRMATION = "awaiting_confirmation"
 STATUS_EXECUTED = "executed"
 STATUS_CANCELLED = "cancelled"
 STATUS_UNSUPPORTED = "unsupported"
@@ -830,18 +829,6 @@ def _collect_or_prepare(
             data={"requires_confirmation": state.get("requires_confirmation", False), "can_undo": False},
         )
 
-    if state.get("requires_confirmation"):
-        state["status"] = STATUS_AWAITING_CONFIRMATION
-        save_session(session_id, state)
-        return _build_response(
-            reply=_build_confirmation_reply(steps, locale),
-            status=STATUS_AWAITING_CONFIRMATION,
-            intent=steps[-1]["intent"] if steps else None,
-            session_id=session_id,
-            pending_action=state,
-            data={"requires_confirmation": True, "can_undo": False},
-        )
-
     clear_session(session_id)
     return _execute_planned_steps(db, team_id=team_id, user_id=user_id, steps=steps, locale=locale)
 
@@ -857,7 +844,7 @@ def _initial_plan_response(db: Session, *, team_id: uuid.UUID, user_id: uuid.UUI
     if len(steps) > MAX_PLAN_STEPS:
         return _build_response(reply=translate(locale, "assistant.too_many_steps", count=len(steps)), status=STATUS_UNSUPPORTED, intent=INTENT_UNSUPPORTED, session_id=None, data={"can_undo": False})
 
-    state = {"status": STATUS_COLLECTING, "steps": steps, "current_step_index": 0, "requires_confirmation": _has_mutating_step(steps)}
+    state = {"status": STATUS_COLLECTING, "steps": steps, "current_step_index": 0, "requires_confirmation": False}
     sid = create_session(state)
     return _collect_or_prepare(db, team_id=team_id, user_id=user_id, locale=locale, session_id=sid, state=state, incoming_message=None)
 
@@ -892,18 +879,11 @@ def execute_assistant(
             clear_session(session_id)
             return _build_response(reply=translate(locale, "assistant.cancelled"), status=STATUS_CANCELLED, intent=current_intent, session_id=None, data={"can_undo": False})
 
-        if state.get("status") == STATUS_AWAITING_CONFIRMATION:
-            if _equals_any(text, TERM_SETS["yes"]):
-                clear_session(session_id)
-                return _execute_planned_steps(db, team_id=team_id, user_id=user_id, steps=steps, locale=locale)
-            return _build_response(
-                reply=translate(locale, "assistant.batch_confirm_hint"),
-                status=STATUS_AWAITING_CONFIRMATION,
-                intent=current_intent,
-                session_id=session_id,
-                pending_action=state,
-                data={"requires_confirmation": True, "can_undo": False},
-            )
+        if state.get("status") == "awaiting_confirmation":
+            # Backward compatibility for sessions created by older logic:
+            # execute directly instead of waiting for explicit confirmation.
+            clear_session(session_id)
+            return _execute_planned_steps(db, team_id=team_id, user_id=user_id, steps=steps, locale=locale)
 
         return _collect_or_prepare(
             db,
