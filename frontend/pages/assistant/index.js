@@ -243,5 +243,9 @@ Page({
     } finally {
       this.setData({ loading: false });
     }
+  },
+
+  goOrchestrationPage() {
+    wx.navigateTo({ url: "/pages/assistant-graph/index" });
   }
 });

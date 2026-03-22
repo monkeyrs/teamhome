@@ -1,0 +1,58 @@
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  min-height: 64rpx;
+}
+
+.label {
+  font-size: 24rpx;
+  color: var(--text-secondary);
+}
+
+.value {
+  font-size: 26rpx;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.actions {
+  margin-top: 16rpx;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.refresh-btn {
+  min-height: 64rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+}
+
+.error {
+  margin-top: 14rpx;
+  font-size: 24rpx;
+  color: var(--danger);
+}
+
+.item-line {
+  min-height: 56rpx;
+  display: flex;
+  align-items: center;
+  font-size: 24rpx;
+  color: var(--text-regular);
+  word-break: break-all;
+}
+
+.mermaid-text {
+  width: 100%;
+  min-height: 220rpx;
+  padding: 16rpx;
+  border-radius: 16rpx;
+  background: var(--bg-soft);
+  box-sizing: border-box;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: var(--text-regular);
+}

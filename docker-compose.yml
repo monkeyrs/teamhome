@@ -20,3 +20,14 @@ services:
     restart: unless-stopped
     ports:
       - "5432:5432"
+
+  langgraph:
+    build: .
+    env_file:
+      - backend/.env
+    command: ["langgraph", "dev", "--config", "/app/backend/langgraph.json", "--host", "0.0.0.0", "--port", "22024", "--no-reload"]
+    ports:
+      - "22024:22024"
+    restart: unless-stopped
+    depends_on:
+      - api

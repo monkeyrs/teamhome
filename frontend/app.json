@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/assistant/index",
+    "pages/assistant-graph/index",
     "pages/schedule/index",
     "pages/finance/index"
   ],
@@ -16,6 +17,9 @@
       "desc": "用于选择日程和费用位置"
     }
   },
+  "requiredPrivateInfos": [
+    "chooseLocation"
+  ],
   "tabBar": {
     "color": "#7a7e83",
     "selectedColor": "#07c160",

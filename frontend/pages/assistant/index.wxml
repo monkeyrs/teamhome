@@ -86,6 +86,7 @@
       </view>
 
       <view class="muted answer-data" wx:if="{{answerDataText}}">{{answerDataText}}</view>
+      <view class="orchestration-link" bindtap="goOrchestrationPage">LangGraph UI</view>
     </view>
   </view>
 </view>

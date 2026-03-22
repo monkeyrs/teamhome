@@ -1,0 +1,60 @@
+<view class="page-shell">
+  <view class="page-stack">
+    <view class="card">
+      <view class="row">
+        <view class="label">Engine</view>
+        <view class="value">{{engine || '-'}}</view>
+      </view>
+      <view class="row">
+        <view class="label">LangGraph Enabled</view>
+        <view class="value">{{langgraphEnabled ? 'Yes' : 'No'}}</view>
+      </view>
+      <view class="row">
+        <view class="label">LangGraph Available</view>
+        <view class="value">{{langgraphAvailable ? 'Yes' : 'No'}}</view>
+      </view>
+      <view class="row">
+        <view class="label">LangSmith Tracing</view>
+        <view class="value">{{langsmith.tracing ? 'On' : 'Off'}}</view>
+      </view>
+      <view class="row">
+        <view class="label">LangSmith API Key</view>
+        <view class="value">{{langsmith.api_key_configured ? 'Configured' : 'Missing'}}</view>
+      </view>
+      <view class="row">
+        <view class="label">LangSmith Project</view>
+        <view class="value">{{langsmith.project || '-'}}</view>
+      </view>
+      <view class="row">
+        <view class="label">LangSmith Endpoint</view>
+        <view class="value">{{langsmith.endpoint || '-'}}</view>
+      </view>
+      <view class="actions">
+        <button class="btn-secondary refresh-btn" loading="{{loading}}" bindtap="loadGraph">刷新</button>
+      </view>
+      <view class="error" wx:if="{{error}}">{{error}}</view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">Nodes ({{nodes.length}})</view>
+      <block wx:for="{{nodes}}" wx:key="id">
+        <view class="item-line">{{item.id}}</view>
+      </block>
+    </view>
+
+    <view class="card">
+      <view class="section-title">Edges ({{edges.length}})</view>
+      <block wx:for="{{edges}}" wx:key="index">
+        <view class="item-line">{{item.source}} → {{item.target}}</view>
+      </block>
+    </view>
+
+    <view class="card">
+      <view class="section-title">Mermaid</view>
+      <textarea class="mermaid-text" value="{{mermaid}}" auto-height="true" disabled />
+      <view class="actions">
+        <button class="btn-secondary refresh-btn" bindtap="copyMermaid">复制 Mermaid</button>
+      </view>
+    </view>
+  </view>
+</view>

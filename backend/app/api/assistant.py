@@ -10,7 +10,7 @@ from app.core.database import get_db
 from app.core.i18n import normalize_locale, translate
 from app.crud.team import is_team_member
 from app.schemas.assistant import AssistantExecuteIn, AssistantExecuteOut, AssistantUndoIn
-from app.services.assistant_orchestrator import execute_assistant, undo_last_assistant_batch
+from app.services.assistant_orchestrator import execute_assistant, get_orchestration_debug, undo_last_assistant_batch
 from sqlalchemy.orm import Session
 
 from app.services.llm.transcribe import transcribe_audio_file
@@ -100,3 +100,8 @@ def undo(
             "cards": [],
         }
     return AssistantExecuteOut(**result)
+
+
+@router.get("/orchestration")
+def orchestration(current_user=Depends(get_current_user)) -> dict:
+    return get_orchestration_debug()

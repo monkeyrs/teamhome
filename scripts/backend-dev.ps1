@@ -1,218 +1,97 @@
 param(
-  [ValidateSet("start", "restart", "stop", "status")]
+  [ValidateSet("start", "restart", "stop", "status", "logs")]
   [string]$Action = "start",
   [int]$Port = 8000,
-  [switch]$SkipDb
+  [int]$LogTail = 200,
+  [switch]$NoBuild
 )
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RootDir = Resolve-Path (Join-Path $ScriptDir "..")
-$BackendDir = Join-Path $RootDir "backend"
 $ComposeFile = Join-Path $RootDir "docker-compose.yml"
-$RunDir = Join-Path $BackendDir ".run"
-$PidFile = Join-Path $RunDir "uvicorn.pid"
-$StdoutLogFile = Join-Path $RunDir "uvicorn.stdout.log"
-$StderrLogFile = Join-Path $RunDir "uvicorn.stderr.log"
 $HealthUrl = "http://127.0.0.1:$Port/openapi.json"
-$VenvPython = Join-Path $BackendDir ".venv\Scripts\python.exe"
+$GraphHealthUrl = "http://127.0.0.1:22024/docs"
 
-function Ensure-RunDir {
-  if (-not (Test-Path $RunDir)) {
-    New-Item -ItemType Directory -Path $RunDir | Out-Null
-  }
-}
-
-function Has-Command {
-  param([string]$Name)
-  return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
-}
-
-function Get-RunningBackendProcess {
-  if (-not (Test-Path $PidFile)) {
-    return $null
-  }
-  $backendPid = Get-Content $PidFile -ErrorAction SilentlyContinue | Select-Object -First 1
-  if (-not $backendPid) {
-    return $null
-  }
-  return Get-Process -Id $backendPid -ErrorAction SilentlyContinue
-}
-
-function Get-PortProcess {
-  param([int]$ListenPort)
-  try {
-    $conn = Get-NetTCPConnection -LocalAddress "127.0.0.1" -LocalPort $ListenPort -State Listen -ErrorAction Stop | Select-Object -First 1
-    if (-not $conn) { return $null }
-    return Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue
-  } catch {
-    return $null
-  }
-}
-
-function Ensure-DockerAndDb {
-  if ($SkipDb) {
-    Write-Host "SkipDb enabled: not starting PostgreSQL container."
-    return
-  }
-
-  if (-not (Has-Command "docker")) {
-    throw "docker not found in PATH. Please install Docker Desktop and retry."
-  }
-  & docker compose version *> $null
-  if ($LASTEXITCODE -ne 0) {
-    throw "docker compose unavailable. Open Docker Desktop and ensure compose is enabled."
-  }
-
-  & docker info *> $null
-  if ($LASTEXITCODE -ne 0) {
-    $dockerDesktop = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
-    if (Test-Path $dockerDesktop) {
-      Write-Host "Docker daemon not ready. Launching Docker Desktop..."
-      Start-Process -FilePath $dockerDesktop | Out-Null
-      Write-Host "Waiting for Docker daemon (up to 90s)..."
-      $ready = $false
-      for ($i = 0; $i -lt 45; $i++) {
-        Start-Sleep -Seconds 2
-        & docker info *> $null
-        if ($LASTEXITCODE -eq 0) {
-          $ready = $true
-          break
-        }
-      }
-      if (-not $ready) {
-        throw "Docker Desktop launched but daemon still unavailable. Wait until Docker shows 'Engine running', then rerun script."
-      }
-    } else {
-      throw "Docker daemon unavailable. Start Docker Desktop manually and rerun script."
-    }
-  }
-
+function Ensure-ComposeFile {
   if (-not (Test-Path $ComposeFile)) {
     throw "docker-compose.yml not found: $ComposeFile"
   }
+}
 
-  Write-Host "Starting PostgreSQL container (db)..."
-  & docker compose -f $ComposeFile up -d db
+function Ensure-Docker {
+  if ($null -eq (Get-Command docker -ErrorAction SilentlyContinue)) {
+    throw "docker not found in PATH."
+  }
+  & docker compose version *> $null
   if ($LASTEXITCODE -ne 0) {
-    throw "Failed to start db service via docker compose."
+    throw "docker compose unavailable. Please install/enable Docker Compose."
+  }
+  & docker info *> $null
+  if ($LASTEXITCODE -ne 0) {
+    throw "docker daemon is not running."
   }
 }
 
-function Stop-Backend {
-  $proc = Get-RunningBackendProcess
-  if ($proc) {
-    Write-Host "Stopping backend process PID $($proc.Id)..."
-    Stop-Process -Id $proc.Id -Force
+function Compose-Up {
+  if ($NoBuild) {
+    & docker compose -f $ComposeFile up -d
   } else {
-    $portProc = Get-PortProcess -ListenPort $Port
-    if ($portProc) {
-      Write-Host "Stopping process on port ${Port}: PID $($portProc.Id) ($($portProc.ProcessName))..."
-      Stop-Process -Id $portProc.Id -Force
-    } else {
-      Write-Host "Backend process not running."
-    }
+    & docker compose -f $ComposeFile up -d --build
   }
-  if (Test-Path $PidFile) {
-    Remove-Item $PidFile -Force
+  if ($LASTEXITCODE -ne 0) {
+    throw "docker compose up failed."
   }
 }
 
-function Start-Backend {
-  Ensure-RunDir
-  $current = Get-RunningBackendProcess
-  if ($current) {
-    Write-Host "Backend already running. PID: $($current.Id)"
-    return
+function Compose-Stop {
+  & docker compose -f $ComposeFile stop
+  if ($LASTEXITCODE -ne 0) {
+    throw "docker compose stop failed."
   }
-  if (-not (Test-Path $BackendDir)) {
-    throw "backend directory not found: $BackendDir"
-  }
+}
 
-  $pythonExe = if (Test-Path $VenvPython) { $VenvPython } else { "python" }
-
-  Write-Host "Starting backend on http://127.0.0.1:$Port ..."
-  if (-not (Test-Path $StdoutLogFile)) {
-    New-Item -ItemType File -Path $StdoutLogFile -Force | Out-Null
-  }
-  if (-not (Test-Path $StderrLogFile)) {
-    New-Item -ItemType File -Path $StderrLogFile -Force | Out-Null
-  }
-  $proc = Start-Process `
-    -FilePath $pythonExe `
-    -ArgumentList "-m uvicorn app.main:app --host 127.0.0.1 --port $Port --reload" `
-    -WorkingDirectory $BackendDir `
-    -RedirectStandardOutput $StdoutLogFile `
-    -RedirectStandardError $StderrLogFile `
-    -PassThru
-
-  Set-Content -Path $PidFile -Value $proc.Id -Encoding ASCII
-  Start-Sleep -Seconds 2
-
-  try {
-    $resp = Invoke-WebRequest -Uri $HealthUrl -UseBasicParsing -TimeoutSec 6
-    Write-Host "Backend ready. Status: $($resp.StatusCode)"
-  } catch {
-    Write-Host "Backend process started but health check failed. Check log:"
-    Write-Host "  $StdoutLogFile"
-    Write-Host "  $StderrLogFile"
-    throw $_
-  }
+function Compose-Logs {
+  & docker compose -f $ComposeFile logs -f --tail=$LogTail api langgraph
 }
 
 function Show-Status {
-  $proc = Get-RunningBackendProcess
-  if ($proc) {
-    Write-Host "Backend: RUNNING (PID $($proc.Id))"
-  } else {
-    $portProc = Get-PortProcess -ListenPort $Port
-    if ($portProc) {
-      Write-Host "Backend: RUNNING (external PID $($portProc.Id), $($portProc.ProcessName))"
-    } else {
-      Write-Host "Backend: STOPPED"
-    }
-  }
-
+  & docker compose -f $ComposeFile ps api langgraph db
   try {
-    $resp = Invoke-WebRequest -Uri $HealthUrl -UseBasicParsing -TimeoutSec 4
+    $resp = Invoke-WebRequest -Uri $HealthUrl -UseBasicParsing -TimeoutSec 5
     Write-Host "API health: HTTP $($resp.StatusCode)"
   } catch {
-    Write-Host "API health: unreachable"
+    Write-Host "API health: unreachable ($HealthUrl)"
   }
-
-  if ($SkipDb) {
-    Write-Host "Docker db status: skipped"
-  } elseif (Has-Command "docker") {
-    Write-Host "Docker db status:"
-    & docker info *> $null
-    if ($LASTEXITCODE -eq 0) {
-      & docker compose -f $ComposeFile ps db
-    } else {
-      Write-Host "Docker daemon not running."
-    }
-  } else {
-    Write-Host "Docker not installed in PATH."
+  try {
+    $graphResp = Invoke-WebRequest -Uri $GraphHealthUrl -UseBasicParsing -TimeoutSec 5
+    Write-Host "LangGraph health: HTTP $($graphResp.StatusCode)"
+  } catch {
+    Write-Host "LangGraph health: unreachable ($GraphHealthUrl)"
   }
 }
 
 try {
+  Ensure-ComposeFile
+  Ensure-Docker
+
   switch ($Action) {
     "start" {
-      Ensure-DockerAndDb
-      Start-Backend
+      Compose-Up
       Show-Status
     }
     "restart" {
-      Ensure-DockerAndDb
-      Stop-Backend
-      Start-Backend
+      Compose-Up
       Show-Status
     }
     "stop" {
-      Stop-Backend
+      Compose-Stop
       Show-Status
     }
     "status" {
       Show-Status
+    }
+    "logs" {
+      Compose-Logs
     }
   }
 } catch {

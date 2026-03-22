@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import datetime as dt
 import decimal
+import os
 import re
 import uuid
+from typing import TypedDict
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.i18n import RELATIVE_DAY_TERMS, TERM_SETS, normalize_locale, translate
 from app.crud.finance import create_finance_record
 from app.crud.schedule import create_schedule, list_schedules
@@ -17,6 +20,11 @@ from app.services.assistant_session_service import clear_session, create_session
 from app.services.llm.assistant import answer_finance_question
 from app.services.llm.openrouter import get_llm_client
 from app.services.llm.parser import parse_finance_text, parse_schedule_text
+
+try:
+    from langgraph.graph import END, START, StateGraph
+except Exception:  # pragma: no cover - fallback when optional dependency is unavailable
+    END = START = StateGraph = None
 
 
 INTENT_CREATE_FINANCE = "create_finance"
@@ -42,6 +50,54 @@ ALLOWED_INTENTS = {
 
 _UNDO_BATCHES: dict[tuple[str, str], list[dict]] = {}
 _BARE_NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
+_ASSISTANT_GRAPH = None
+
+
+class AssistantGraphState(TypedDict, total=False):
+    db: Session
+    team_id: uuid.UUID
+    user_id: uuid.UUID
+    locale: str
+    message: str
+    session_id: str | None
+    incoming_message: str | None
+    session_state: dict
+    response: dict
+
+
+def _assistant_engine() -> str:
+    try:
+        return str(get_settings().ASSISTANT_ENGINE or "legacy").strip().casefold()
+    except Exception:
+        return "legacy"
+
+
+def _use_langgraph_engine() -> bool:
+    return _assistant_engine() == "langgraph" and StateGraph is not None
+
+
+def _langsmith_debug_info() -> dict:
+    settings = get_settings()
+    return {
+        "tracing": bool(settings.LANGSMITH_TRACING),
+        "endpoint": settings.LANGSMITH_ENDPOINT,
+        "project": settings.LANGSMITH_PROJECT,
+        "workspace_id": settings.LANGSMITH_WORKSPACE_ID,
+        "api_key_configured": bool(settings.LANGSMITH_API_KEY),
+    }
+
+
+def _apply_langsmith_env_from_settings() -> None:
+    settings = get_settings()
+    os.environ["LANGSMITH_TRACING"] = "true" if settings.LANGSMITH_TRACING else "false"
+    if settings.LANGSMITH_API_KEY:
+        os.environ["LANGSMITH_API_KEY"] = settings.LANGSMITH_API_KEY
+    if settings.LANGSMITH_ENDPOINT:
+        os.environ["LANGSMITH_ENDPOINT"] = settings.LANGSMITH_ENDPOINT
+    if settings.LANGSMITH_PROJECT:
+        os.environ["LANGSMITH_PROJECT"] = settings.LANGSMITH_PROJECT
+    if settings.LANGSMITH_WORKSPACE_ID:
+        os.environ["LANGSMITH_WORKSPACE_ID"] = settings.LANGSMITH_WORKSPACE_ID
 
 
 def _normalize_text(text: str) -> str:
@@ -849,7 +905,183 @@ def _initial_plan_response(db: Session, *, team_id: uuid.UUID, user_id: uuid.UUI
     return _collect_or_prepare(db, team_id=team_id, user_id=user_id, locale=locale, session_id=sid, state=state, incoming_message=None)
 
 
-def execute_assistant(
+def _graph_prepare(state: AssistantGraphState) -> AssistantGraphState:
+    if state.get("response"):
+        return state
+
+    db = state["db"]
+    team_id = state["team_id"]
+    user_id = state["user_id"]
+    locale = state["locale"]
+    message = state["message"]
+    session_id = state.get("session_id")
+    existing = get_session(session_id)
+    if existing:
+        state["session_state"] = existing
+        state["session_id"] = session_id
+        state["incoming_message"] = message
+        return state
+
+    intents, need_split = _plan_intents(message)
+    if need_split:
+        state["response"] = _build_response(
+            reply=translate(locale, "assistant.too_many_steps", count=MAX_PLAN_STEPS),
+            status=STATUS_UNSUPPORTED,
+            intent=INTENT_UNSUPPORTED,
+            session_id=None,
+            data={"can_undo": False},
+        )
+        return state
+
+    steps = _make_initial_steps(intents, message, locale)
+    if not steps:
+        state["response"] = _build_response(
+            reply=translate(locale, "assistant.unsupported"),
+            status=STATUS_UNSUPPORTED,
+            intent=INTENT_UNSUPPORTED,
+            session_id=None,
+            data={"can_undo": False},
+        )
+        return state
+    if len(steps) > MAX_PLAN_STEPS:
+        state["response"] = _build_response(
+            reply=translate(locale, "assistant.too_many_steps", count=len(steps)),
+            status=STATUS_UNSUPPORTED,
+            intent=INTENT_UNSUPPORTED,
+            session_id=None,
+            data={"can_undo": False},
+        )
+        return state
+
+    graph_session_state = {"status": STATUS_COLLECTING, "steps": steps, "current_step_index": 0, "requires_confirmation": False}
+    sid = create_session(graph_session_state)
+    state["session_id"] = sid
+    state["session_state"] = graph_session_state
+    state["incoming_message"] = None
+    return state
+
+
+def _graph_collect_or_execute(state: AssistantGraphState) -> AssistantGraphState:
+    if state.get("response"):
+        return state
+
+    db = state["db"]
+    team_id = state["team_id"]
+    user_id = state["user_id"]
+    locale = state["locale"]
+    session_id = state.get("session_id") or ""
+    session_state = state.get("session_state") or {}
+    incoming = state.get("incoming_message")
+    steps = session_state.get("steps", [])
+    idx = int(session_state.get("current_step_index", 0))
+    current_intent = steps[idx]["intent"] if idx < len(steps) else None
+
+    if incoming and _equals_any(incoming, TERM_SETS["cancel"]):
+        clear_session(session_id)
+        state["response"] = _build_response(
+            reply=translate(locale, "assistant.cancelled"),
+            status=STATUS_CANCELLED,
+            intent=current_intent,
+            session_id=None,
+            data={"can_undo": False},
+        )
+        return state
+
+    if session_state.get("status") == "awaiting_confirmation":
+        # Backward compatibility for sessions created by older logic.
+        clear_session(session_id)
+        state["response"] = _execute_planned_steps(db, team_id=team_id, user_id=user_id, steps=steps, locale=locale)
+        return state
+
+    state["response"] = _collect_or_prepare(
+        db,
+        team_id=team_id,
+        user_id=user_id,
+        locale=locale,
+        session_id=session_id,
+        state=session_state,
+        incoming_message=incoming,
+    )
+    return state
+
+
+def _build_assistant_graph():
+    if StateGraph is None:
+        return None
+    graph = StateGraph(AssistantGraphState)
+    graph.add_node("prepare", _graph_prepare)
+    graph.add_node("collect_or_execute", _graph_collect_or_execute)
+    graph.add_edge(START, "prepare")
+    graph.add_edge("prepare", "collect_or_execute")
+    graph.add_edge("collect_or_execute", END)
+    return graph.compile()
+
+
+def _get_assistant_graph():
+    global _ASSISTANT_GRAPH
+    if _ASSISTANT_GRAPH is None:
+        _ASSISTANT_GRAPH = _build_assistant_graph()
+    return _ASSISTANT_GRAPH
+
+
+def _execute_assistant_langgraph(
+    db: Session,
+    *,
+    team_id: uuid.UUID,
+    user_id: uuid.UUID,
+    message: str,
+    session_id: str | None,
+    locale: str,
+) -> dict:
+    _apply_langsmith_env_from_settings()
+    app = _get_assistant_graph()
+    if not app:
+        return _execute_assistant_legacy(
+            db,
+            team_id=team_id,
+            user_id=user_id,
+            message=message,
+            session_id=session_id,
+            locale=locale,
+        )
+
+    invoke_config = {
+        "run_name": "assistant_orchestrator_langgraph",
+        "tags": ["teamhome", "assistant", "langgraph"],
+        "metadata": {
+            "team_id": str(team_id),
+            "user_id": str(user_id),
+            "locale": locale,
+            "engine": _assistant_engine(),
+        },
+        "configurable": {
+            "thread_id": session_id or str(uuid.uuid4()),
+        },
+    }
+    result = app.invoke(
+        {
+            "db": db,
+            "team_id": team_id,
+            "user_id": user_id,
+            "locale": locale,
+            "message": message,
+            "session_id": session_id,
+        },
+        config=invoke_config,
+    )
+    response = result.get("response") if isinstance(result, dict) else None
+    if isinstance(response, dict):
+        return response
+    return _build_response(
+        reply=translate(locale, "assistant.internal_error"),
+        status=STATUS_UNSUPPORTED,
+        intent=INTENT_UNSUPPORTED,
+        session_id=None,
+        data={"can_undo": False},
+    )
+
+
+def _execute_assistant_legacy(
     db: Session,
     *,
     team_id: uuid.UUID,
@@ -897,6 +1129,112 @@ def execute_assistant(
     except Exception:
         clear_session(session_id)
         return _build_response(reply=translate(locale, "assistant.internal_error"), status=STATUS_UNSUPPORTED, intent=INTENT_UNSUPPORTED, session_id=None, data={"can_undo": False})
+
+
+def execute_assistant(
+    db: Session,
+    *,
+    team_id: uuid.UUID,
+    user_id: uuid.UUID,
+    message: str,
+    session_id: str | None,
+    locale: str = "zh-CN",
+) -> dict:
+    if _use_langgraph_engine():
+        locale = normalize_locale(locale)
+        if not is_team_member(db, team_id=team_id, user_id=user_id):
+            raise PermissionError("Not a team member")
+        text = _normalize_text(message)
+        if not text:
+            return _build_response(
+                reply=translate(locale, "assistant.empty_message"),
+                status=STATUS_UNSUPPORTED,
+                intent=None,
+                session_id=session_id,
+                data={"can_undo": False},
+            )
+        try:
+            return _execute_assistant_langgraph(
+                db,
+                team_id=team_id,
+                user_id=user_id,
+                message=text,
+                session_id=session_id,
+                locale=locale,
+            )
+        except Exception:
+            clear_session(session_id)
+            return _build_response(
+                reply=translate(locale, "assistant.internal_error"),
+                status=STATUS_UNSUPPORTED,
+                intent=INTENT_UNSUPPORTED,
+                session_id=None,
+                data={"can_undo": False},
+            )
+
+    return _execute_assistant_legacy(
+        db,
+        team_id=team_id,
+        user_id=user_id,
+        message=message,
+        session_id=session_id,
+        locale=locale,
+    )
+
+
+def get_orchestration_debug() -> dict:
+    runtime_engine = _assistant_engine()
+    langsmith = _langsmith_debug_info()
+    nodes = [
+        {"id": "START", "label": "START"},
+        {"id": "prepare", "label": "prepare"},
+        {"id": "collect_or_execute", "label": "collect_or_execute"},
+        {"id": "END", "label": "END"},
+    ]
+    edges = [
+        {"source": "START", "target": "prepare"},
+        {"source": "prepare", "target": "collect_or_execute"},
+        {"source": "collect_or_execute", "target": "END"},
+    ]
+    mermaid = "graph TD\n  START --> prepare\n  prepare --> collect_or_execute\n  collect_or_execute --> END"
+
+    app = _get_assistant_graph()
+    if app and hasattr(app, "get_graph"):
+        try:
+            g = app.get_graph()
+            if hasattr(g, "draw_mermaid"):
+                drawn = g.draw_mermaid()
+                if isinstance(drawn, str) and drawn.strip():
+                    mermaid = drawn
+            raw_nodes = getattr(g, "nodes", None)
+            raw_edges = getattr(g, "edges", None)
+            parsed_nodes = []
+            if isinstance(raw_nodes, dict):
+                for key in raw_nodes.keys():
+                    parsed_nodes.append({"id": str(key), "label": str(key)})
+            if parsed_nodes:
+                nodes = parsed_nodes
+            parsed_edges = []
+            if isinstance(raw_edges, list):
+                for item in raw_edges:
+                    src = getattr(item, "source", None) or getattr(item, "start", None)
+                    dst = getattr(item, "target", None) or getattr(item, "end", None)
+                    if src is not None and dst is not None:
+                        parsed_edges.append({"source": str(src), "target": str(dst)})
+            if parsed_edges:
+                edges = parsed_edges
+        except Exception:
+            pass
+
+    return {
+        "engine": runtime_engine,
+        "langgraph_available": StateGraph is not None,
+        "langgraph_enabled": _use_langgraph_engine(),
+        "langsmith": langsmith,
+        "nodes": nodes,
+        "edges": edges,
+        "mermaid": mermaid,
+    }
 
 
 def undo_last_assistant_batch(

@@ -47,11 +47,19 @@ function undoAssistant(teamId) {
   });
 }
 
+function getOrchestration() {
+  return request({
+    path: "/assistant/orchestration",
+    method: "GET"
+  });
+}
+
 module.exports = {
   updateLanguage,
   listTeams,
   createTeam,
   leaveTeam,
   executeAssistant,
-  undoAssistant
+  undoAssistant,
+  getOrchestration
 };

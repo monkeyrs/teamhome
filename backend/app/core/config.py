@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     OPENAI_MODEL_MAX_ATTEMPTS: int = 6
     OPENROUTER_SITE_URL: str = "http://localhost"
     OPENROUTER_APP_NAME: str = "TeamHome"
+    ASSISTANT_ENGINE: str = "legacy"
+    LANGSMITH_TRACING: bool = False
+    LANGSMITH_API_KEY: str | None = None
+    LANGSMITH_ENDPOINT: str | None = "https://api.smith.langchain.com"
+    LANGSMITH_PROJECT: str | None = "teamhome-assistant"
+    LANGSMITH_WORKSPACE_ID: str | None = None
 
 
 @lru_cache
