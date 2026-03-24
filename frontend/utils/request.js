@@ -6,10 +6,35 @@ function normalizePath(path) {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
+function stripUtf8Bom(text) {
+  if (typeof text !== "string" || text.length === 0) return text;
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
+function parseMaybeJson(data) {
+  if (typeof data !== "string") return data;
+  const cleaned = stripUtf8Bom(data).trim();
+  if (!cleaned) return {};
+  try {
+    return JSON.parse(cleaned);
+  } catch (err) {
+    return cleaned;
+  }
+}
+
+function buildRequestBody(method, data) {
+  if (data == null) return data;
+  const upperMethod = String(method || "GET").toUpperCase();
+  if (upperMethod === "GET" || upperMethod === "DELETE") return data;
+  if (typeof data === "string") return stripUtf8Bom(data);
+  return JSON.stringify(data);
+}
+
 function request({ path, method = "GET", data = null, withAuth = true }) {
   const token = app.globalData.token || "";
   const headers = {
-    "Content-Type": "application/json"
+    "Content-Type": "application/json; charset=UTF-8",
+    Accept: "application/json"
   };
   if (withAuth && token) {
     headers.Authorization = `Bearer ${token}`;
@@ -19,16 +44,17 @@ function request({ path, method = "GET", data = null, withAuth = true }) {
     wx.request({
       url: `${app.globalData.apiBaseUrl}${normalizePath(path)}`,
       method,
-      data,
+      data: buildRequestBody(method, data),
       header: headers,
       success(res) {
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve(res.data);
+          resolve(parseMaybeJson(res.data));
           return;
         }
-        const error = new Error(`HTTP ${res.statusCode}: ${JSON.stringify(res.data)}`);
+        const responseData = parseMaybeJson(res.data);
+        const error = new Error(`HTTP ${res.statusCode}: ${JSON.stringify(responseData)}`);
         error.statusCode = res.statusCode;
-        error.responseData = res.data;
+        error.responseData = responseData;
         reject(error);
       },
       fail(err) {
@@ -53,7 +79,7 @@ function uploadFile({ path, filePath, name = "file", formData = {}, withAuth = t
       formData,
       header: headers,
       success(res) {
-        const data = res.data ? JSON.parse(res.data) : {};
+        const data = parseMaybeJson(res.data || "{}");
         if (res.statusCode >= 200 && res.statusCode < 300) {
           resolve(data);
           return;
@@ -61,6 +87,33 @@ function uploadFile({ path, filePath, name = "file", formData = {}, withAuth = t
         const error = new Error(`HTTP ${res.statusCode}: ${JSON.stringify(data)}`);
         error.statusCode = res.statusCode;
         error.responseData = data;
+        reject(error);
+      },
+      fail(err) {
+        reject(err);
+      }
+    });
+  });
+}
+
+function downloadFile({ path, withAuth = true }) {
+  const token = app.globalData.token || "";
+  const headers = {};
+  if (withAuth && token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  return new Promise((resolve, reject) => {
+    wx.downloadFile({
+      url: `${app.globalData.apiBaseUrl}${normalizePath(path)}`,
+      header: headers,
+      success(res) {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(res);
+          return;
+        }
+        const error = new Error(`HTTP ${res.statusCode}`);
+        error.statusCode = res.statusCode;
         reject(error);
       },
       fail(err) {
@@ -104,6 +157,7 @@ function setCurrentTeamId(teamId) {
 module.exports = {
   request,
   uploadFile,
+  downloadFile,
   setToken,
   setCurrentUser,
   clearToken,

@@ -12,6 +12,16 @@ const {
   mapAssistantResponse
 } = require("./modules/view-state");
 
+const MUTATION_INTENTS = new Set(["create_finance", "create_schedule", "update_finance", "update_schedule", "delete_finance", "delete_schedule"]);
+
+function createRequestToken() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function isMutationIntent(intent) {
+  return MUTATION_INTENTS.has(String(intent || ""));
+}
+
 function syncDirtyScopesFromAssistant(teamId, response) {
   if (!teamId || !response || response.status !== "executed") return;
 
@@ -34,6 +44,12 @@ function syncDirtyScopesFromAssistant(teamId, response) {
 
 Page({
   data: createInitialData(),
+
+  ensureRequestTracking() {
+    if (!this._ignoredRequestTokens) {
+      this._ignoredRequestTokens = new Set();
+    }
+  },
 
   async onShow() {
     this.applyLocale();
@@ -117,7 +133,20 @@ Page({
     const index = Number(event.currentTarget.dataset.index);
     const selected = this.data.teams[index];
     if (!selected) return;
-    this.setData({ teamIndex: index, teamPanelOpen: false });
+    this.setData({
+      teamIndex: index,
+      teamPanelOpen: false,
+      answer: "",
+      answerDataText: "",
+      answerStatus: "",
+      answerStatusLabel: "",
+      answerCanUndo: false,
+      assistantConversationSessionId: "",
+      assistantMutationSessionId: "",
+      assistantReturnedSessionId: "",
+      assistantMissingSlots: [],
+      firstMissingSlot: ""
+    });
     setCurrentTeamId(selected.id);
   },
 
@@ -180,7 +209,23 @@ Page({
     });
   },
 
+  stopCurrentRequest() {
+    this.ensureRequestTracking();
+    if (!this._activeRequestToken) return;
+    this._ignoredRequestTokens.add(this._activeRequestToken);
+    this.setData({
+      assistantConversationSessionId: "",
+      assistantMutationSessionId: "",
+      assistantReturnedSessionId: ""
+    });
+  },
+
   async askAssistant() {
+    if (this.data.loading) {
+      this.stopCurrentRequest();
+      return;
+    }
+
     const team = this.currentTeam();
     const question = (this.data.question || "").trim();
     if (!team) {
@@ -192,23 +237,51 @@ Page({
       return;
     }
 
+    this.ensureRequestTracking();
+    const continueMutation = !!this.data.assistantMutationSessionId && this.data.answerStatus === "collecting";
+    const sessionId = continueMutation ? this.data.assistantMutationSessionId : (this.data.assistantConversationSessionId || null);
+
+    const requestToken = createRequestToken();
+    this._activeRequestToken = requestToken;
     this.setData({ loading: true });
+
     try {
       const data = await assistantApi.executeAssistant({
         teamId: team.id,
         message: question,
-        sessionId: this.data.assistantSessionId
+        sessionId
       });
+      if (this._ignoredRequestTokens.has(requestToken)) {
+        return;
+      }
+
       syncDirtyScopesFromAssistant(team.id, data);
-      this.setData(
-        mapAssistantResponse(data, {
-          clearQuestion: true,
-          formatStatus: (status) => this.formatAnswerStatus(status)
-        })
-      );
+      const mapped = mapAssistantResponse(data, {
+        clearQuestion: true,
+        formatStatus: (status) => this.formatAnswerStatus(status)
+      });
+      const responseIntent = data && data.intent;
+      const responseSessionId = (data && data.session_id) || "";
+      const responseMode = data && data.data && data.data.session_mode;
+      const responseIsMutation = responseMode === "mutation" || (!responseMode && isMutationIntent(responseIntent));
+      if (responseIsMutation) {
+        mapped.assistantConversationSessionId = "";
+        mapped.assistantMutationSessionId = data && data.status === "collecting" ? responseSessionId : "";
+      } else {
+        mapped.assistantMutationSessionId = "";
+        mapped.assistantConversationSessionId = responseSessionId;
+      }
+      this.setData(mapped);
     } catch (err) {
+      if (this._ignoredRequestTokens.has(requestToken)) {
+        return;
+      }
       wx.showToast({ title: this.t("common.sendFailed"), icon: "none" });
     } finally {
+      this._ignoredRequestTokens.delete(requestToken);
+      if (this._activeRequestToken === requestToken) {
+        this._activeRequestToken = "";
+      }
       this.setData({ loading: false });
     }
   },
@@ -232,16 +305,42 @@ Page({
     try {
       const data = await assistantApi.undoAssistant(team.id);
       syncDirtyScopesFromAssistant(team.id, data);
-      this.setData(
-        mapAssistantResponse(data, {
-          clearQuestion: false,
-          formatStatus: (status) => this.formatAnswerStatus(status)
-        })
-      );
+      const mapped = mapAssistantResponse(data, {
+        clearQuestion: false,
+        formatStatus: (status) => this.formatAnswerStatus(status)
+      });
+      mapped.assistantMutationSessionId = "";
+      mapped.assistantConversationSessionId = "";
+      this.setData(mapped);
     } catch (err) {
       wx.showToast({ title: this.t("common.sendFailed"), icon: "none" });
     } finally {
       this.setData({ loading: false });
+    }
+  },
+
+  async downloadAllData() {
+    try {
+      wx.showLoading({ title: this.t("page.downloadPreparing"), mask: true });
+      const res = await assistantApi.downloadAssistantData();
+      const filePath = res && res.tempFilePath;
+      if (!filePath) {
+        throw new Error("Missing temp file path");
+      }
+      wx.hideLoading();
+      wx.openDocument({
+        filePath,
+        showMenu: true,
+        success: () => {
+          wx.showToast({ title: this.t("page.downloadReady"), icon: "success" });
+        },
+        fail: () => {
+          wx.showToast({ title: this.t("page.downloadOpenFailed"), icon: "none" });
+        }
+      });
+    } catch (err) {
+      wx.hideLoading();
+      wx.showToast({ title: this.t("page.downloadFailed"), icon: "none" });
     }
   },
 

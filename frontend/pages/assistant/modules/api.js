@@ -1,4 +1,4 @@
-const { request } = require("../../../utils/request");
+const { request, downloadFile } = require("../../../utils/request");
 
 function updateLanguage(locale) {
   return request({
@@ -54,6 +54,12 @@ function getOrchestration() {
   });
 }
 
+function downloadAssistantData() {
+  return downloadFile({
+    path: "/assistant/export-data"
+  });
+}
+
 module.exports = {
   updateLanguage,
   listTeams,
@@ -61,5 +67,6 @@ module.exports = {
   leaveTeam,
   executeAssistant,
   undoAssistant,
-  getOrchestration
+  getOrchestration,
+  downloadAssistantData
 };

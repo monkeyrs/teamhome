@@ -49,7 +49,7 @@
           auto-height="false"
           cursor-spacing="20"
         />
-        <button class="btn-primary send-btn send-btn-inline" loading="{{loading}}" bindtap="askAssistant">{{i18n.page.send}}</button>
+        <button class="btn-primary send-btn send-btn-inline {{loading ? 'send-btn-inline-stop' : ''}}" bindtap="askAssistant">{{loading ? i18n.page.stop : i18n.page.send}}</button>
       </view>
     </view>
 
@@ -86,7 +86,8 @@
       </view>
 
       <view class="muted answer-data" wx:if="{{answerDataText}}">{{answerDataText}}</view>
-      <view class="orchestration-link" bindtap="goOrchestrationPage">LangGraph UI</view>
+      <view class="orchestration-link" bindtap="goOrchestrationPage">{{i18n.page.langgraphUi}}</view>
     </view>
   </view>
+  <view class="floating-download-btn" bindtap="downloadAllData">{{i18n.page.downloadData}}</view>
 </view>

@@ -4,6 +4,7 @@ import os
 import tempfile
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
@@ -11,6 +12,7 @@ from app.core.i18n import normalize_locale, translate
 from app.crud.team import is_team_member
 from app.schemas.assistant import AssistantExecuteIn, AssistantExecuteOut, AssistantUndoIn
 from app.services.assistant_orchestrator import execute_assistant, get_orchestration_debug, undo_last_assistant_batch
+from app.services.data_export_service import build_user_data_export
 from sqlalchemy.orm import Session
 
 from app.services.llm.transcribe import transcribe_audio_file
@@ -105,3 +107,17 @@ def undo(
 @router.get("/orchestration")
 def orchestration(current_user=Depends(get_current_user)) -> dict:
     return get_orchestration_debug()
+
+
+@router.get("/export-data")
+def export_data(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    filename, payload = build_user_data_export(db=db, user_id=current_user.id)
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(
+        iter([payload]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )

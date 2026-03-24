@@ -317,3 +317,27 @@
   border-radius: 16rpx;
   font-size: 28rpx;
 }
+
+.send-btn-inline-stop {
+  background: #d1d5db;
+  color: #374151;
+}
+
+.floating-download-btn {
+  position: fixed;
+  right: 28rpx;
+  bottom: calc(env(safe-area-inset-bottom) + 22rpx);
+  z-index: 8;
+  min-width: 132rpx;
+  height: 56rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  background: rgba(17, 24, 39, 0.78);
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12rpx 28rpx rgba(15, 23, 42, 0.18);
+}
