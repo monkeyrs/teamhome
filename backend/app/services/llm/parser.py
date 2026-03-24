@@ -115,6 +115,29 @@ def _contains_term(text: str, terms: set[str]) -> bool:
     return any(term.casefold() in lowered for term in terms)
 
 
+def _relative_day_offset(text: str) -> int | None:
+    if _contains_term(text, RELATIVE_DAY_TERMS["day_after_tomorrow"]):
+        return 2
+    if _contains_term(text, RELATIVE_DAY_TERMS["tomorrow"]):
+        return 1
+    if _contains_term(text, RELATIVE_DAY_TERMS["yesterday"]):
+        return -1
+    if _contains_term(text, RELATIVE_DAY_TERMS["today"]):
+        return 0
+    return None
+
+
+def _apply_relative_day(value: dt.datetime | None, text: str) -> dt.datetime | None:
+    if value is None:
+        return None
+    offset = _relative_day_offset(text)
+    if offset is None:
+        return value
+    base = _now_local() + dt.timedelta(days=offset)
+    normalized = value.astimezone(base.tzinfo) if value.tzinfo else value.replace(tzinfo=base.tzinfo)
+    return normalized.replace(year=base.year, month=base.month, day=base.day)
+
+
 def _has_schedule_time_hint(text: str) -> bool:
     if _CLOCK_RE.search(text):
         return True
@@ -141,7 +164,10 @@ def _parse_datetime(text: str, *, prefer_dates_from: str) -> dt.datetime | None:
 
 
 def _parse_schedule_datetime(text: str) -> dt.datetime | None:
-    return _parse_datetime(text, prefer_dates_from="future")
+    prefer_dates_from = "future"
+    if _contains_term(text, RELATIVE_DAY_TERMS["yesterday"]):
+        prefer_dates_from = "past"
+    return _parse_datetime(text, prefer_dates_from=prefer_dates_from)
 
 
 def _infer_finance_default_hour(text: str, category: str | None) -> int | None:
@@ -176,6 +202,7 @@ def _infer_finance_occurred_at(text: str, category: str | None) -> dt.datetime |
 
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=base.tzinfo)
+    parsed = _apply_relative_day(parsed, text)
 
     if not _CLOCK_RE.search(text):
         default_hour = _infer_finance_default_hour(text, category)
@@ -192,7 +219,9 @@ def _infer_relative_schedule_start(text: str) -> dt.datetime | None:
     base = _now_local().replace(minute=0, second=0, microsecond=0)
 
     day_offset = 0
-    if _contains_term(text, RELATIVE_DAY_TERMS["day_after_tomorrow"]):
+    if _contains_term(text, RELATIVE_DAY_TERMS["yesterday"]):
+        day_offset = -1
+    elif _contains_term(text, RELATIVE_DAY_TERMS["day_after_tomorrow"]):
         day_offset = 2
     elif _contains_term(text, RELATIVE_DAY_TERMS["tomorrow"]):
         day_offset = 1
@@ -216,6 +245,32 @@ def _infer_relative_schedule_start(text: str) -> dt.datetime | None:
             return None
 
     return target.replace(hour=hour)
+
+
+def _clean_schedule_title(text: str) -> str:
+    title = text or ""
+    for pattern in PARSER_DATA["schedule_title_patterns"][:-1]:
+        title = re.sub(pattern, "", title)
+    title = re.sub(PARSER_DATA["schedule_title_patterns"][-1], " ", title).strip()
+    title = re.sub(r"^(?:有|要|会|去|安排|参加)\s*", "", title)
+    title = re.sub(r"^(?:我(?:们)?)(?:要|会|想|得)?\s*", "", title)
+    title = re.sub(r"^(?:一下|一个|去)\s*", "", title)
+    title = re.sub(r"\s+", " ", title).strip()
+    return title
+
+
+def _infer_schedule_default_end(text: str, start: dt.datetime | None) -> dt.datetime | None:
+    if not start or _CLOCK_RE.search(text):
+        return None
+    if _contains_term(text, {"morning", "上午", "早上", "午前"}):
+        return start + dt.timedelta(hours=2)
+    if _contains_term(text, {"noon", "中午"}):
+        return start + dt.timedelta(hours=1)
+    if _contains_term(text, {"afternoon", "下午", "午後"}):
+        return start + dt.timedelta(hours=1)
+    if _contains_term(text, {"evening", "tonight", "晚上", "今晚", "夜"}):
+        return start + dt.timedelta(hours=1)
+    return None
 
 
 def parse_finance_text(text: str, *, use_llm: bool = True) -> dict:
@@ -303,13 +358,9 @@ def parse_schedule_text(text: str) -> dict:
     if not _has_schedule_time_hint(text):
         return {"title": text, "start_time": None, "end_time": None}
 
-    start = _parse_schedule_datetime(text) or _infer_relative_schedule_start(text)
+    start = _apply_relative_day(_parse_schedule_datetime(text), text) or _infer_relative_schedule_start(text)
 
-    title = text
-    if start:
-        for pattern in PARSER_DATA["schedule_title_patterns"][:-1]:
-            title = re.sub(pattern, "", title)
-        title = re.sub(PARSER_DATA["schedule_title_patterns"][-1], " ", title).strip()
+    title = _clean_schedule_title(text) if start else text
 
     end: dt.datetime | None = None
     duration = _SCHEDULE_DURATION_RE.search(text)
@@ -320,6 +371,8 @@ def parse_schedule_text(text: str) -> dict:
             end = start + dt.timedelta(hours=value)
         else:
             end = start + dt.timedelta(minutes=value)
+    if start and end is None:
+        end = _infer_schedule_default_end(text, start)
 
     if not title:
         title = PARSER_DATA["schedule_default_title"]

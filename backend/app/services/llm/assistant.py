@@ -25,7 +25,15 @@ def _decimal_to_str(value: decimal.Decimal | None) -> str:
     return format(value.quantize(decimal.Decimal("0.01")), "f")
 
 
-def _fallback_answer(db: Session, *, team_id: uuid.UUID, question: str, locale: str) -> dict:
+def _fallback_answer(
+    db: Session,
+    *,
+    team_id: uuid.UUID,
+    question: str,
+    locale: str,
+    window_start: dt.datetime | None = None,
+    window_end: dt.datetime | None = None,
+) -> dict:
     q = (question or "").strip()
     if not q:
         return {"answer": translate(locale, "finance.empty_question"), "data": None}
@@ -39,9 +47,10 @@ def _fallback_answer(db: Session, *, team_id: uuid.UUID, question: str, locale: 
             db.query(func.coalesce(func.sum(FinanceRecord.amount), 0))
             .filter(
                 FinanceRecord.team_id == team_id,
+                FinanceRecord.deleted_at.is_(None),
                 FinanceRecord.type == "expense",
-                FinanceRecord.created_at >= start,
-                FinanceRecord.created_at < end,
+                FinanceRecord.occurred_at >= start,
+                FinanceRecord.occurred_at < end,
                 FinanceRecord.category.in_(list(TERM_SETS["food_categories"])),
             )
             .scalar()
@@ -51,25 +60,35 @@ def _fallback_answer(db: Session, *, team_id: uuid.UUID, question: str, locale: 
             "data": {"total": _decimal_to_str(total), "start": start.isoformat(), "end": end.isoformat()},
         }
 
-    total = (
-        db.query(func.coalesce(func.sum(FinanceRecord.amount), 0))
-        .filter(FinanceRecord.team_id == team_id, FinanceRecord.type == "expense")
-        .scalar()
+    total_query = db.query(func.coalesce(func.sum(FinanceRecord.amount), 0)).filter(
+        FinanceRecord.team_id == team_id,
+        FinanceRecord.deleted_at.is_(None),
+        FinanceRecord.type == "expense",
     )
+    if window_start is not None:
+        total_query = total_query.filter(FinanceRecord.occurred_at > window_start)
+    if window_end is not None:
+        total_query = total_query.filter(FinanceRecord.occurred_at <= window_end)
+    total = total_query.scalar()
     return {
         "answer": translate(locale, "finance.total_expense", total=_decimal_to_str(total)),
         "data": {"total_expense": _decimal_to_str(total)},
     }
 
 
-def _build_finance_snapshot(db: Session, *, team_id: uuid.UUID) -> dict:
-    records = (
-        db.query(FinanceRecord)
-        .filter(FinanceRecord.team_id == team_id, FinanceRecord.deleted_at.is_(None))
-        .order_by(FinanceRecord.created_at.desc())
-        .limit(50)
-        .all()
-    )
+def _build_finance_snapshot(
+    db: Session,
+    *,
+    team_id: uuid.UUID,
+    window_start: dt.datetime | None = None,
+    window_end: dt.datetime | None = None,
+) -> dict:
+    query = db.query(FinanceRecord).filter(FinanceRecord.team_id == team_id, FinanceRecord.deleted_at.is_(None))
+    if window_start is not None:
+        query = query.filter(FinanceRecord.occurred_at > window_start)
+    if window_end is not None:
+        query = query.filter(FinanceRecord.occurred_at <= window_end)
+    records = query.order_by(FinanceRecord.occurred_at.desc(), FinanceRecord.created_at.desc()).limit(50).all()
 
     total_expense = decimal.Decimal("0")
     total_income = decimal.Decimal("0")
@@ -108,15 +127,30 @@ def _build_finance_snapshot(db: Session, *, team_id: uuid.UUID) -> dict:
     }
 
 
-def answer_finance_question(db: Session, *, team_id: uuid.UUID, question: str, locale: str = "zh-CN") -> dict:
+def answer_finance_question(
+    db: Session,
+    *,
+    team_id: uuid.UUID,
+    question: str,
+    locale: str = "zh-CN",
+    window_start: dt.datetime | None = None,
+    window_end: dt.datetime | None = None,
+) -> dict:
     q = (question or "").strip()
     if not q:
         return {"answer": translate(locale, "finance.empty_question"), "data": None}
 
-    snapshot = _build_finance_snapshot(db, team_id=team_id)
+    snapshot = _build_finance_snapshot(db, team_id=team_id, window_start=window_start, window_end=window_end)
     client = get_llm_client()
     if not client:
-        return _fallback_answer(db, team_id=team_id, question=q, locale=locale)
+        return _fallback_answer(
+            db,
+            team_id=team_id,
+            question=q,
+            locale=locale,
+            window_start=window_start,
+            window_end=window_end,
+        )
 
     response_language = {
         "zh-CN": "Simplified Chinese",
@@ -145,11 +179,25 @@ def answer_finance_question(db: Session, *, team_id: uuid.UUID, question: str, l
     try:
         result = client.chat_json(system=system_prompt, user=user_prompt) or {}
     except Exception:
-        return _fallback_answer(db, team_id=team_id, question=q, locale=locale)
+        return _fallback_answer(
+            db,
+            team_id=team_id,
+            question=q,
+            locale=locale,
+            window_start=window_start,
+            window_end=window_end,
+        )
 
     answer = str(result.get("answer") or "").strip()
     if not answer:
-        return _fallback_answer(db, team_id=team_id, question=q, locale=locale)
+        return _fallback_answer(
+            db,
+            team_id=team_id,
+            question=q,
+            locale=locale,
+            window_start=window_start,
+            window_end=window_end,
+        )
 
     data = result.get("data")
     if data is not None and not isinstance(data, dict):

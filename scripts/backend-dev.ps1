@@ -39,7 +39,7 @@ function Compose-Up {
     & docker compose -f $ComposeFile up -d --build
   }
   if ($LASTEXITCODE -ne 0) {
-    throw "docker compose up failed."
+    throw "docker compose up failed. If images already exist and the build step is blocked by network/auth issues, retry with -NoBuild."
   }
 }
 

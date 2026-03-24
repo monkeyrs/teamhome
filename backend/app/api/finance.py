@@ -68,12 +68,16 @@ def parse_optional_datetime(value: str | None) -> datetime | None:
 @router.get("")
 def list_finance_route(
     team_id: uuid.UUID,
+    window_start: datetime | None = None,
+    window_end: datetime | None = None,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> list[FinanceOut]:
     if not is_team_member(db, team_id=team_id, user_id=current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a team member")
-    items = list_finance_records(db, team_id=team_id)
+    if window_start and window_end and window_start > window_end:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="window_start must be <= window_end")
+    items = list_finance_records(db, team_id=team_id, window_start=window_start, window_end=window_end)
     return [to_finance_out(item) for item in items]
 
 

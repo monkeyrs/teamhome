@@ -496,8 +496,9 @@ PARSER_DATA = {
         ("\u5bbf\u6cca", "lodging"),
     ],
     "finance_time_profiles": [
-        {"hour": 9, "terms": ["morning", "breakfast", "\u4e0a\u5348", "\u65e9\u4e0a", "\u65e9\u9910", "\u5348\u524d"]},
-        {"hour": 12, "terms": ["noon", "lunch", "\u4e2d\u5348", "\u5348\u9910"]},
+        {"hour": 8, "terms": ["breakfast", "\u65e9\u9910"]},
+        {"hour": 9, "terms": ["morning", "\u4e0a\u5348", "\u65e9\u4e0a", "\u5348\u524d"]},
+        {"hour": 11, "terms": ["noon", "lunch", "\u4e2d\u5348", "\u5348\u9910"]},
         {"hour": 18, "terms": ["afternoon", "evening", "dinner", "tonight", "\u4e0b\u5348", "\u665a\u4e0a", "\u665a\u9910", "\u4eca\u665a", "\u591c", "\u5348\u5f8c"]},
     ],
     "finance_relative_default_hour": 9,
@@ -537,9 +538,9 @@ PARSER_DATA = {
         {"hour": 1, "terms": ["late night", "\u51cc\u6668", "\u6df1\u591c"]},
     ],
     "schedule_title_patterns": [
-        r"(\u4eca\u5929|\u660e\u5929|\u540e\u5929|\u4e0b\u5468|\u5468[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u65e5\u5929])",
+        r"(\u6628\u5929|\u6628\u65e5|\u4eca\u5929|\u4eca\u65e5|\u660e\u5929|\u660e\u65e5|\u540e\u5929|\u660e\u5f8c\u65e5|\u4e0b\u5468|\u5468[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u65e5\u5929])",
         r"(\d{1,2}\u70b9(?:\u534a)?|\d{1,2}:\d{2})",
-        r"(\u4e0a\u5348|\u4e0b\u5348|\u665a\u4e0a|\u4e2d\u5348|\u51cc\u6668|\u4eca\u665a)",
+        r"(\u4e0a\u5348|\u4e0b\u5348|\u665a\u4e0a|\u4e2d\u5348|\u51cc\u6668|\u4eca\u665a|\u65e9\u4e0a)",
         r"[\uff0c\u3002,.\s]+",
     ],
     "schedule_duration_pattern": r"(\d+(?:\.\d+)?)\s*(\u5c0f\u65f6|h|H|\u5206\u949f|min|MIN)",

@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     LANGSMITH_ENDPOINT: str | None = "https://api.smith.langchain.com"
     LANGSMITH_PROJECT: str | None = "teamhome-assistant"
     LANGSMITH_WORKSPACE_ID: str | None = None
+    LANGGRAPH_API_URL: str | None = None
+    LANGGRAPH_ASSISTANT_ID: str = "assistant_orchestrator"
+    LANGGRAPH_REQUEST_TIMEOUT_SECONDS: float = 45.0
 
 
 @lru_cache

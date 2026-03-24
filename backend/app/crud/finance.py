@@ -40,13 +40,19 @@ def create_finance_record(
     return record
 
 
-def list_finance_records(db: Session, *, team_id: uuid.UUID) -> list[FinanceRecord]:
-    return (
-        db.query(FinanceRecord)
-        .filter(FinanceRecord.team_id == team_id, FinanceRecord.deleted_at.is_(None))
-        .order_by(FinanceRecord.occurred_at.desc(), FinanceRecord.created_at.desc())
-        .all()
-    )
+def list_finance_records(
+    db: Session,
+    *,
+    team_id: uuid.UUID,
+    window_start: dt.datetime | None = None,
+    window_end: dt.datetime | None = None,
+) -> list[FinanceRecord]:
+    query = db.query(FinanceRecord).filter(FinanceRecord.team_id == team_id, FinanceRecord.deleted_at.is_(None))
+    if window_start is not None:
+        query = query.filter(FinanceRecord.occurred_at > window_start)
+    if window_end is not None:
+        query = query.filter(FinanceRecord.occurred_at <= window_end)
+    return query.order_by(FinanceRecord.occurred_at.desc(), FinanceRecord.created_at.desc()).all()
 
 
 def get_finance_record(db: Session, *, record_id: uuid.UUID) -> FinanceRecord | None:

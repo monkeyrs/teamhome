@@ -12,7 +12,11 @@ class Base(DeclarativeBase):
 
 def get_engine():
     settings = get_settings()
-    return create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+    database_url = settings.DATABASE_URL
+    connect_args = {}
+    if database_url.startswith("postgresql"):
+        connect_args["options"] = "-c client_encoding=UTF8"
+    return create_engine(database_url, pool_pre_ping=True, connect_args=connect_args)
 
 
 engine = get_engine()

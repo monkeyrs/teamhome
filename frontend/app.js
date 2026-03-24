@@ -3,7 +3,7 @@
 App({
   globalData: {
     apiBaseUrl: "http://127.0.0.1:8000",
-    //apiBaseUrl: "http://your-domain.example:8000",  //dont delete, production!
+    //apiBaseUrl: "https://your-domain.example:8000",  //dont delete, production!
     token: "",
     currentTeamId: "",
     teams: [],

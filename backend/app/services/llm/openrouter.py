@@ -64,7 +64,7 @@ class OpenAICompatibleClient:
     def _headers(self) -> dict[str, str]:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
+            "Content-Type": "application/json; charset=UTF-8",
         }
         if "openrouter.ai" in self.base_url:
             headers["HTTP-Referer"] = self.site_url
