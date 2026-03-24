@@ -1,4 +1,5 @@
 const MESSAGES = require("../i18n/messages");
+const MESSAGE_OVERRIDES = require("../i18n/messages-overrides");
 
 const DEFAULT_LOCALE = "zh-CN";
 const SUPPORTED_LOCALES = ["zh-CN", "en-US", "ja-JP"];
@@ -14,7 +15,37 @@ function normalizeLocale(locale) {
 }
 
 function getMessages(locale) {
-  return MESSAGES[normalizeLocale(locale)] || MESSAGES[DEFAULT_LOCALE];
+  const normalized = normalizeLocale(locale);
+  const base = MESSAGES[normalized] || MESSAGES[DEFAULT_LOCALE];
+  const overrides = MESSAGE_OVERRIDES[normalized] || MESSAGE_OVERRIDES[DEFAULT_LOCALE] || {};
+  return mergeMessages(base, overrides);
+}
+
+function mergeMessages(base, overrides) {
+  if (!overrides || typeof overrides !== "object") {
+    return base;
+  }
+  if (!base || typeof base !== "object") {
+    return overrides;
+  }
+  const merged = Object.assign({}, base);
+  Object.keys(overrides).forEach((key) => {
+    const baseValue = base[key];
+    const overrideValue = overrides[key];
+    if (
+      baseValue &&
+      overrideValue &&
+      typeof baseValue === "object" &&
+      typeof overrideValue === "object" &&
+      !Array.isArray(baseValue) &&
+      !Array.isArray(overrideValue)
+    ) {
+      merged[key] = mergeMessages(baseValue, overrideValue);
+      return;
+    }
+    merged[key] = overrideValue;
+  });
+  return merged;
 }
 
 function getLocale() {
@@ -24,7 +55,12 @@ function getLocale() {
 
 function applyTabBarLocale(locale) {
   const messages = getMessages(locale);
-  [messages.app.tabBar.assistant, messages.app.tabBar.schedule, messages.app.tabBar.finance].forEach((text, index) => {
+  [
+    messages.app.tabBar.assistant,
+    messages.app.tabBar.schedule,
+    messages.app.tabBar.finance,
+    messages.app.tabBar.analysis
+  ].forEach((text, index) => {
     try {
       wx.setTabBarItem({ index, text });
     } catch (err) {

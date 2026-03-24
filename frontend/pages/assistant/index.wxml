@@ -86,8 +86,6 @@
       </view>
 
       <view class="muted answer-data" wx:if="{{answerDataText}}">{{answerDataText}}</view>
-      <view class="orchestration-link" bindtap="goOrchestrationPage">{{i18n.page.langgraphUi}}</view>
     </view>
   </view>
-  <view class="floating-download-btn" bindtap="downloadAllData">{{i18n.page.downloadData}}</view>
 </view>

@@ -284,6 +284,31 @@ def _format_dt(value: dt.datetime | None, locale: str) -> str:
     return local_value.strftime("%Y-%m-%d %H:%M")
 
 
+def _normalize_finance_category_value(value: object) -> str | None:
+    text = _normalize_optional_text(value)
+    if not text:
+        return None
+    normalized = text.casefold()
+    mapping = {
+        "food": "餐费",
+        "meal": "餐费",
+        "transport": "交通",
+        "traffic": "交通",
+        "taxi": "交通",
+        "rent": "房租",
+        "lodging": "住宿",
+        "hotel": "住宿",
+        "accommodation": "住宿",
+        "utilities": "水电",
+        "shopping": "购物",
+        "entertainment": "娱乐",
+        "salary": "工资",
+        "reimbursement": "报销",
+        "other": None,
+    }
+    return mapping.get(normalized, text)
+
+
 def _parse_iso_datetime(value: str | None) -> dt.datetime | None:
     if not value:
         return None
@@ -534,6 +559,8 @@ def _extract_finance_slots(message: str) -> dict:
     category = _normalize_finance_category_value(parsed.get("category"))
     if category == "other":
         category = None
+    if category is None and _contains_any(text, TERM_SETS["food_terms"]):
+        category = "餐费"
     record_type = parsed.get("type")
     has_type_hint = _contains_any(text, TERM_SETS["expense_hints"] | TERM_SETS["income_hints"])
     if parsed.get("type_confidence") == "low":
@@ -609,8 +636,9 @@ def _heuristic_intents(message: str) -> list[str]:
         has_create_hint and (has_explicit_schedule_hint or bool(schedule.get("title")) or bool(schedule.get("start_time")))
     )
     has_schedule_time_parse = bool(schedule.get("start_time"))
+    is_non_event_schedule = _contains_any(text, TERM_SETS["non_event_schedule_terms"])
     has_schedule_hint = has_explicit_schedule_hint or (
-        has_schedule_time_parse and not has_amount and not has_finance_hint and not has_create_hint
+        has_schedule_time_parse and not has_amount and not has_finance_hint and not has_create_hint and not is_non_event_schedule
     )
     has_schedule_query_hint = _contains_any(text, TERM_SETS["schedule_query_hints"])
 
@@ -649,7 +677,8 @@ def _sanitize_planned_intents(message: str, intents: list[str]) -> list[str]:
         or _contains_any(text, TERM_SETS["food_terms"])
     )
     has_schedule_time = bool(schedule.get("start_time"))
-    has_schedule_hint = has_explicit_schedule_hint or (has_schedule_time and not has_amount and not has_finance_hint)
+    is_non_event_schedule = _contains_any(text, TERM_SETS["non_event_schedule_terms"])
+    has_schedule_hint = has_explicit_schedule_hint or (has_schedule_time and not has_amount and not has_finance_hint and not is_non_event_schedule)
     has_schedule_create_hint = _contains_any(text, TERM_SETS["schedule_create_hints"])
     has_query_hint = _contains_any(text, TERM_SETS["query_hints"]) or _contains_any(text, TERM_SETS["schedule_query_hints"])
 
@@ -668,6 +697,8 @@ def _sanitize_planned_intents(message: str, intents: list[str]) -> list[str]:
     if INTENT_QUERY_SCHEDULE in sanitized and INTENT_QUERY_FINANCE in sanitized:
         if has_schedule_hint and not has_finance_hint:
             sanitized = [intent for intent in sanitized if intent != INTENT_QUERY_FINANCE]
+    if INTENT_CREATE_SCHEDULE in sanitized and is_non_event_schedule and not has_explicit_schedule_hint:
+        sanitized = [intent for intent in sanitized if intent != INTENT_CREATE_SCHEDULE]
 
     ordered: list[str] = []
     for intent in sanitized:
@@ -735,7 +766,7 @@ def _plan_intents(message: str, *, history: list[dict] | None = None) -> tuple[l
 
 def _required_slots(intent: str) -> list[str]:
     if intent == INTENT_CREATE_FINANCE:
-        return ["amount", "type", "category"]
+        return ["amount", "type"]
     if intent == INTENT_CREATE_SCHEDULE:
         return ["title", "start_time", "end_time"]
     return []
@@ -756,6 +787,14 @@ def _slot_prompt(intent: str, slot_name: str, locale: str) -> str:
     }
     key = prompt_map.get(intent, {}).get(slot_name, "assistant.slot_fallback")
     return translate(locale, key)
+
+
+def _slot_prompt_with_context(intent: str, slot_name: str, locale: str, source_text: str | None) -> str:
+    question = _slot_prompt(intent, slot_name, locale)
+    source = _normalize_text(source_text or "")
+    if not source:
+        return question
+    return translate(locale, "assistant.slot_with_context", source=source, question=question)
 
 
 def _extract_slots_for_intent(intent: str, message: str, locale: str, current_slots: dict | None = None) -> dict:
@@ -844,7 +883,7 @@ def _split_message_fragments(message: str) -> list[str]:
         stripped_line = line.strip()
         if not stripped_line:
             continue
-        parts = _MESSAGE_FRAGMENT_SPLIT_RE.split(stripped_line)
+        parts = re.split(r"(?<=[。！？!?；;])\s*", stripped_line)
         for part in parts:
             fragment = part.strip()
             if fragment:
@@ -884,6 +923,8 @@ def _plan_graph_steps(message: str, *, locale: str, history: list[dict] | None =
         for fragment in fragments:
             fragment_steps, response = _plan_steps_from_text(fragment, locale=locale, history=None)
             if response is not None:
+                if response.get("intent") == INTENT_UNSUPPORTED and response.get("status") == STATUS_UNSUPPORTED:
+                    continue
                 return None, response
             steps.extend(fragment_steps or [])
     else:
@@ -1081,13 +1122,14 @@ def _execute_step(db: Session, *, step: dict, team_id: uuid.UUID, user_id: uuid.
         occurred_at = slots.get("occurred_at")
         if isinstance(occurred_at, str):
             occurred_at = _parse_iso_datetime(occurred_at)
+        category = _normalize_optional_text(slots.get("category")) or translate(locale, "assistant.not_categorized")
         record = create_finance_record(
             db,
             team_id=team_id,
             user_id=user_id,
             amount=amount,
             record_type=slots["type"],
-            category=slots["category"],
+            category=category,
             occurred_at=occurred_at,
             location=_normalize_optional_text(slots.get("location")),
             location_latitude=None,
@@ -1216,7 +1258,7 @@ def _collect_or_prepare(
         save_session(session_id, state)
         slot_name = missing[0]
         return _build_response(
-            reply=_slot_prompt(current["intent"], slot_name, locale),
+            reply=_slot_prompt_with_context(current["intent"], slot_name, locale, current.get("source_text")),
             status=STATUS_COLLECTING,
             intent=current["intent"],
             session_id=session_id,
@@ -1506,10 +1548,10 @@ def _schedule_subgraph(db: Session, *, step: dict, team_id: uuid.UUID, user_id: 
         return {
             "status": STATUS_COLLECTING,
             "missing_slots": missing,
-            "reply": _slot_prompt(intent, missing[0], locale),
-            "step": {"intent": intent, "slots": _serialize_slots(intent, slots)},
+            "reply": _slot_prompt_with_context(intent, missing[0], locale, step.get("source_text")),
+            "step": {"intent": intent, "slots": _serialize_slots(intent, slots), "source_text": step.get("source_text")},
         }
-    return {"status": "ready", "step": {"intent": intent, "slots": _serialize_slots(intent, slots)}}
+    return {"status": "ready", "step": {"intent": intent, "slots": _serialize_slots(intent, slots), "source_text": step.get("source_text")}}
 
 
 def _expense_subgraph(db: Session, *, step: dict, team_id: uuid.UUID, user_id: uuid.UUID, locale: str) -> dict:
@@ -1525,10 +1567,10 @@ def _expense_subgraph(db: Session, *, step: dict, team_id: uuid.UUID, user_id: u
         return {
             "status": STATUS_COLLECTING,
             "missing_slots": missing,
-            "reply": _slot_prompt(intent, missing[0], locale),
-            "step": {"intent": intent, "slots": _serialize_slots(intent, slots)},
+            "reply": _slot_prompt_with_context(intent, missing[0], locale, step.get("source_text")),
+            "step": {"intent": intent, "slots": _serialize_slots(intent, slots), "source_text": step.get("source_text")},
         }
-    return {"status": "ready", "step": {"intent": intent, "slots": _serialize_slots(intent, slots)}}
+    return {"status": "ready", "step": {"intent": intent, "slots": _serialize_slots(intent, slots), "source_text": step.get("source_text")}}
 
 
 def _graph_loop_guard(state: AssistantGraphState) -> AssistantGraphState:

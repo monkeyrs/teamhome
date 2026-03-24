@@ -360,7 +360,12 @@ def parse_schedule_text(text: str) -> dict:
 
     start = _apply_relative_day(_parse_schedule_datetime(text), text) or _infer_relative_schedule_start(text)
 
-    title = _clean_schedule_title(text) if start else text
+    title_source = text
+    for separator in ("，", ",", "；", ";"):
+        if separator in title_source:
+            title_source = title_source.split(separator, 1)[0]
+            break
+    title = _clean_schedule_title(title_source) if start else text
 
     end: dt.datetime | None = None
     duration = _SCHEDULE_DURATION_RE.search(text)

@@ -1,0 +1,221 @@
+<view class="page-overlay" wx:if="{{teamReady && !hasTeam}}">
+  <view class="overlay-card">
+    <view class="overlay-title">{{i18n.page.noTeamTitle}}</view>
+    <view class="overlay-text">{{i18n.page.noTeamText}}</view>
+    <button class="btn-primary" bindtap="goAssistantPage">{{i18n.page.goAssistant}}</button>
+  </view>
+</view>
+
+<view wx:if="{{hasTeam}}" class="page-shell analysis-shell">
+  <view class="page-stack">
+    <view class="card analysis-hero">
+      <view class="analysis-hero-head">
+        <view>
+          <view class="analysis-meta">{{i18n.page.heroMeta}}</view>
+          <view class="analysis-title">{{teams[teamIndex].name || i18n.common.teamMember}}</view>
+        </view>
+        <view class="analysis-badge">{{i18n.page.heroBadge}}</view>
+      </view>
+      <view class="analysis-desc">{{i18n.page.heroDesc}}</view>
+
+      <view class="summary-grid">
+        <block wx:for="{{summaryCards}}" wx:key="label">
+          <view class="summary-card summary-card-{{item.tone}}">
+            <view class="summary-label">{{item.label}}</view>
+            <view class="summary-value">{{item.value}}</view>
+          </view>
+        </block>
+      </view>
+    </view>
+
+    <view class="card chart-card">
+      <view class="section-header">
+        <view class="section-title">{{i18n.page.categoryTitle}}</view>
+        <view class="section-meta">{{i18n.page.categoryMeta}}</view>
+      </view>
+      <view wx:if="{{categoryBars.length}}" class="bars-stack">
+        <block wx:for="{{categoryBars}}" wx:key="name">
+          <view class="bar-row">
+            <view class="bar-head">
+              <view class="bar-name">{{item.name}}</view>
+              <view class="bar-value">{{item.valueText}}</view>
+            </view>
+            <view class="bar-track">
+              <view class="bar-fill" style="width: {{item.width}}; background: {{item.color}};"></view>
+            </view>
+          </view>
+        </block>
+      </view>
+      <view wx:else class="empty-chart">
+        <view class="empty-title">{{i18n.page.emptyChart}}</view>
+        <view class="empty-text">{{i18n.page.emptyChartSub}}</view>
+      </view>
+    </view>
+
+    <view class="chart-grid">
+      <view class="card chart-card compact-chart">
+        <view class="section-header">
+          <view class="section-title">{{i18n.page.weeklyTitle}}</view>
+          <view class="section-meta">{{i18n.page.weeklyMeta}}</view>
+        </view>
+        <view wx:if="{{weekdayBars.length}}" class="column-chart">
+          <block wx:for="{{weekdayBars}}" wx:key="label">
+            <view class="column-item">
+              <view class="column-count">{{item.count}}</view>
+              <view class="column-track">
+                <view class="column-fill column-fill-blue" style="height: {{item.height}};"></view>
+              </view>
+              <view class="column-label">{{item.label}}</view>
+            </view>
+          </block>
+        </view>
+        <view wx:else class="empty-chart small-empty">
+          <view class="empty-text">{{i18n.page.emptyChart}}</view>
+        </view>
+      </view>
+
+      <view class="card chart-card compact-chart">
+        <view class="section-header">
+          <view class="section-title">{{i18n.page.recentExpenseTitle}}</view>
+          <view class="section-meta">{{i18n.page.recentExpenseMeta}}</view>
+        </view>
+        <view wx:if="{{recentExpenseBars.length}}" class="column-chart">
+          <block wx:for="{{recentExpenseBars}}" wx:key="label">
+            <view class="column-item">
+              <view class="column-count">{{item.valueText}}</view>
+              <view class="column-track">
+                <view class="column-fill" style="height: {{item.height}}; background: {{item.color}};"></view>
+              </view>
+              <view class="column-label">{{item.label}}</view>
+            </view>
+          </block>
+        </view>
+        <view wx:else class="empty-chart small-empty">
+          <view class="empty-text">{{i18n.page.emptyChart}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="card chart-card">
+      <view class="section-header">
+        <view class="section-title">{{i18n.page.memberTitle}}</view>
+        <view class="section-meta">{{i18n.page.memberMeta}}</view>
+      </view>
+      <view wx:if="{{memberBars.length}}" class="bars-stack">
+        <block wx:for="{{memberBars}}" wx:key="name">
+          <view class="bar-row">
+            <view class="bar-head">
+              <view class="bar-name">{{item.name}}</view>
+              <view class="bar-value">{{item.totalText}}</view>
+            </view>
+            <view class="bar-track">
+              <view class="bar-fill" style="width: {{item.width}}; background: {{item.color}};"></view>
+            </view>
+            <view class="bar-caption">{{item.meta}}</view>
+          </view>
+        </block>
+      </view>
+      <view wx:else class="empty-chart">
+        <view class="empty-title">{{i18n.page.emptyChart}}</view>
+        <view class="empty-text">{{i18n.page.emptyChartSub}}</view>
+      </view>
+    </view>
+
+    <view class="card chart-card">
+      <view class="section-header">
+        <view class="section-title">{{i18n.page.activityTitle}}</view>
+        <view class="section-meta">{{i18n.page.activityMeta}}</view>
+      </view>
+      <view wx:if="{{timeBuckets.length}}" class="heat-row">
+        <block wx:for="{{timeBuckets}}" wx:key="label">
+          <view class="heat-card">
+            <view class="heat-count">{{item.countText}}</view>
+            <view class="heat-column">
+              <view class="heat-fill" style="height: {{item.height}}; background: {{item.color}};"></view>
+            </view>
+            <view class="heat-label">{{item.label}}</view>
+          </view>
+        </block>
+      </view>
+      <view wx:else class="empty-chart">
+        <view class="empty-title">{{i18n.page.emptyChart}}</view>
+        <view class="empty-text">{{i18n.page.emptyChartSub}}</view>
+      </view>
+    </view>
+
+    <view class="card graph-card">
+      <view class="section-header">
+        <view class="section-title">{{i18n.page.graphTitle}}</view>
+        <view class="section-meta">{{i18n.page.graphMeta}}</view>
+      </view>
+
+      <view class="graph-row">
+        <view class="graph-node graph-node-primary">
+          <view class="graph-node-title">{{i18n.page.graphPrepare}}</view>
+          <view class="graph-node-desc">{{i18n.page.graphPrepareDesc}}</view>
+        </view>
+        <view class="graph-center graph-center-arrow">
+          <view class="graph-arrow-line"></view>
+          <view class="graph-arrow-head"></view>
+        </view>
+        <view class="graph-node graph-node-blue">
+          <view class="graph-node-title">{{i18n.page.graphQueue}}</view>
+          <view class="graph-node-desc">{{i18n.page.graphQueueDesc}}</view>
+        </view>
+      </view>
+
+      <view class="graph-row graph-row-connector">
+        <view class="graph-spacer"></view>
+        <view class="graph-center">
+          <view class="graph-stem"></view>
+        </view>
+        <view class="graph-spacer"></view>
+      </view>
+
+      <view class="graph-row">
+        <view class="graph-node graph-node-green">
+          <view class="graph-node-title">{{i18n.page.graphSchedule}}</view>
+          <view class="graph-node-desc">{{i18n.page.graphScheduleDesc}}</view>
+        </view>
+        <view class="graph-center graph-center-fork">
+          <view class="graph-fork-horizontal"></view>
+          <view class="graph-fork-vertical"></view>
+        </view>
+        <view class="graph-node graph-node-orange">
+          <view class="graph-node-title">{{i18n.page.graphExpense}}</view>
+          <view class="graph-node-desc">{{i18n.page.graphExpenseDesc}}</view>
+        </view>
+      </view>
+
+      <view class="graph-row graph-row-connector">
+        <view class="graph-spacer"></view>
+        <view class="graph-center">
+          <view class="graph-stem"></view>
+        </view>
+        <view class="graph-spacer"></view>
+      </view>
+
+      <view class="graph-row">
+        <view class="graph-node graph-node-violet">
+          <view class="graph-node-title">{{i18n.page.graphCollect}}</view>
+          <view class="graph-node-desc">{{i18n.page.graphCollectDesc}}</view>
+        </view>
+        <view class="graph-center graph-center-arrow">
+          <view class="graph-arrow-line"></view>
+          <view class="graph-arrow-head"></view>
+        </view>
+        <view class="graph-node graph-node-dark">
+          <view class="graph-node-title">{{i18n.page.graphCommit}}</view>
+          <view class="graph-node-desc">{{i18n.page.graphCommitDesc}}</view>
+        </view>
+      </view>
+
+      <view class="graph-foot">
+        <view class="graph-pill">{{i18n.page.graphUndo}}</view>
+        <view class="graph-foot-text">{{i18n.page.graphUndoDesc}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="floating-download-btn" bindtap="downloadAllData">{{i18n.page.downloadData}}</view>
+</view>

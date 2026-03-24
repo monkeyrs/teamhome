@@ -3,7 +3,8 @@
     "pages/assistant/index",
     "pages/assistant-graph/index",
     "pages/schedule/index",
-    "pages/finance/index"
+    "pages/finance/index",
+    "pages/analysis/index"
   ],
   "window": {
     "navigationBarTitleText": "TeamHome",
@@ -14,7 +15,7 @@
   },
   "permission": {
     "scope.userLocation": {
-      "desc": "用于选择日程和费用位置"
+      "desc": "用于为日程和费用选择地点"
     }
   },
   "requiredPrivateInfos": [
@@ -37,6 +38,10 @@
       {
         "pagePath": "pages/finance/index",
         "text": "Finance"
+      },
+      {
+        "pagePath": "pages/analysis/index",
+        "text": "Analysis"
       }
     ]
   },

@@ -317,34 +317,5 @@ Page({
     } finally {
       this.setData({ loading: false });
     }
-  },
-
-  async downloadAllData() {
-    try {
-      wx.showLoading({ title: this.t("page.downloadPreparing"), mask: true });
-      const res = await assistantApi.downloadAssistantData();
-      const filePath = res && res.tempFilePath;
-      if (!filePath) {
-        throw new Error("Missing temp file path");
-      }
-      wx.hideLoading();
-      wx.openDocument({
-        filePath,
-        showMenu: true,
-        success: () => {
-          wx.showToast({ title: this.t("page.downloadReady"), icon: "success" });
-        },
-        fail: () => {
-          wx.showToast({ title: this.t("page.downloadOpenFailed"), icon: "none" });
-        }
-      });
-    } catch (err) {
-      wx.hideLoading();
-      wx.showToast({ title: this.t("page.downloadFailed"), icon: "none" });
-    }
-  },
-
-  goOrchestrationPage() {
-    wx.navigateTo({ url: "/pages/assistant-graph/index" });
   }
 });
