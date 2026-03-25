@@ -1,9 +1,18 @@
-﻿const { DEFAULT_LOCALE, applyTabBarLocale, normalizeLocale } = require("./utils/i18n");
+const { DEFAULT_LOCALE, applyTabBarLocale, normalizeLocale } = require("./utils/i18n");
+const defaultConfig = require("./config/default");
+
+let localConfig = {};
+try {
+  localConfig = require("./config/local");
+} catch (err) {
+  localConfig = {};
+}
+
+const runtimeConfig = Object.assign({}, defaultConfig, localConfig);
 
 App({
   globalData: {
-    apiBaseUrl: "http://127.0.0.1:8000",
-    //apiBaseUrl: "https://your-domain.example:8000",  //dont delete, production!
+    apiBaseUrl: runtimeConfig.apiBaseUrl,
     token: "",
     currentTeamId: "",
     teams: [],

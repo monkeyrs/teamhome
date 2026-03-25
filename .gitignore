@@ -1,6 +1,7 @@
 # local secrets
 backend/.env
 backend/.run/
+frontend/config/local.js
 
 # python artifacts
 __pycache__/
