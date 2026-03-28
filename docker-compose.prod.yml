@@ -1,0 +1,39 @@
+services:
+  api:
+    build: .
+    env_file:
+      - backend/.env
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      LANGGRAPH_API_URL: http://langgraph:22024
+    restart: unless-stopped
+    depends_on:
+      - db
+      - langgraph
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  langgraph:
+    build: .
+    env_file:
+      - backend/.env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    command: ["langgraph", "dev", "--config", "/app/backend/langgraph.json", "--host", "0.0.0.0", "--port", "22024", "--no-reload"]
+    restart: unless-stopped
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:

@@ -1,5 +1,5 @@
 const { request, setToken, setCurrentUser, clearToken, setCurrentTeamId } = require("./request");
-const { getLocale, getMessages } = require("./i18n");
+const { getLocale } = require("./i18n");
 
 async function loginIfNeeded(forceRefresh = false) {
   const app = getApp();
@@ -27,7 +27,6 @@ async function loginIfNeeded(forceRefresh = false) {
     withAuth: false,
     data: {
       code,
-      nickname: getMessages(locale).app.defaultNickname,
       language: locale
     }
   });

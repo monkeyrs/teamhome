@@ -118,7 +118,7 @@ def list_finance_categories_route(
 
 
 @router.post("/parse")
-def parse_finance(payload: FinanceParseIn) -> FinanceParseOut:
+def parse_finance(payload: FinanceParseIn, current_user=Depends(get_current_user)) -> FinanceParseOut:
     data = parse_finance_text(payload.text)
     return FinanceParseOut(**data)
 

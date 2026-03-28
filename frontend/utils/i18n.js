@@ -1,5 +1,6 @@
 const MESSAGES = require("../i18n/messages");
 const MESSAGE_OVERRIDES = require("../i18n/messages-overrides");
+const TIMELINE_MESSAGE_OVERRIDES = require("../i18n/messages-timeline-overrides");
 
 const DEFAULT_LOCALE = "zh-CN";
 const SUPPORTED_LOCALES = ["zh-CN", "en-US", "ja-JP"];
@@ -17,7 +18,10 @@ function normalizeLocale(locale) {
 function getMessages(locale) {
   const normalized = normalizeLocale(locale);
   const base = MESSAGES[normalized] || MESSAGES[DEFAULT_LOCALE];
-  const overrides = MESSAGE_OVERRIDES[normalized] || MESSAGE_OVERRIDES[DEFAULT_LOCALE] || {};
+  const overrides = mergeMessages(
+    MESSAGE_OVERRIDES[normalized] || MESSAGE_OVERRIDES[DEFAULT_LOCALE] || {},
+    TIMELINE_MESSAGE_OVERRIDES[normalized] || TIMELINE_MESSAGE_OVERRIDES[DEFAULT_LOCALE] || {}
+  );
   return mergeMessages(base, overrides);
 }
 
@@ -58,7 +62,6 @@ function applyTabBarLocale(locale) {
   [
     messages.app.tabBar.assistant,
     messages.app.tabBar.schedule,
-    messages.app.tabBar.finance,
     messages.app.tabBar.analysis
   ].forEach((text, index) => {
     try {
@@ -86,6 +89,20 @@ function getLanguageOptions(locale) {
     code,
     label: messages.app.languageOptions[code]
   }));
+}
+
+function translateMessage(messages, path, params = {}) {
+  const parts = String(path || "").split(".");
+  let current = messages;
+  parts.forEach((part) => {
+    current = current && current[part];
+  });
+
+  let text = typeof current === "string" ? current : path;
+  Object.keys(params).forEach((key) => {
+    text = text.replace(`{${key}}`, params[key]);
+  });
+  return text;
 }
 
 function applyPageLocale(page, pageKey) {
@@ -119,5 +136,6 @@ module.exports = {
   applyTabBarLocale,
   applyPageLocale,
   getLanguageOptions,
+  translateMessage,
   normalizeLocale
 };

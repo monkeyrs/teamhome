@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -13,12 +13,17 @@ router = APIRouter()
 
 @router.post("/login")
 async def login(payload: AuthLoginIn, db: Session = Depends(get_db)) -> AuthLoginOut:
-    openid = await exchange_wechat_code_for_openid(payload.code)
+    try:
+        openid = await exchange_wechat_code_for_openid(payload.code)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="WECHAT_LOGIN_UNAVAILABLE",
+        ) from exc
     user = get_or_create_user_by_openid(
         db,
         openid,
         nickname=payload.nickname,
-        avatar=payload.avatar,
         language=payload.language,
     )
     token = create_access_token(str(user.id))
@@ -36,6 +41,14 @@ def update_me(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> UserOut:
+    if payload.nickname is not None:
+        normalized_nickname = payload.nickname.strip()
+        current_nickname = (current_user.nickname or "").strip()
+        if current_nickname and normalized_nickname != current_nickname:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="NICKNAME_LOCKED",
+            )
     user = update_user_profile(
         db,
         user=current_user,

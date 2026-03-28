@@ -77,7 +77,7 @@ def create_schedule_route(
 
 
 @router.post("/parse")
-def parse_schedule(payload: ScheduleParseIn) -> ScheduleParseOut:
+def parse_schedule(payload: ScheduleParseIn, current_user=Depends(get_current_user)) -> ScheduleParseOut:
     data = parse_schedule_text(payload.text)
     return ScheduleParseOut(**data)
 

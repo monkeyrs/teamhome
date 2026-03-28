@@ -1,5 +1,18 @@
 function createInitialData() {
   return {
+    canUseNicknameInput: false,
+    nicknamePromptOpen: false,
+    profileNickname: "",
+    profileLocked: false,
+    savingProfile: false,
+    teamActionLoading: false,
+    teamDialogOpen: false,
+    teamDialogMode: "",
+    teamDialogName: "",
+    teamDialogPassword: "",
+    teamDialogPasswordCells: ["", "", "", ""],
+    teamDialogPasswordFocus: false,
+    teamDialogSubmitting: false,
     teams: [],
     teamIndex: 0,
     teamName: "",

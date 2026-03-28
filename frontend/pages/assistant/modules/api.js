@@ -1,10 +1,20 @@
 const { request, downloadFile } = require("../../../utils/request");
 
 function updateLanguage(locale) {
+  return updateProfile({ language: locale });
+}
+
+function updateProfile(payload) {
   return request({
     path: "/auth/me",
     method: "PUT",
-    data: { language: locale }
+    data: payload
+  });
+}
+
+function discoverTeam(name) {
+  return request({
+    path: `/teams/discover?name=${encodeURIComponent(name)}`
   });
 }
 
@@ -12,11 +22,11 @@ function listTeams() {
   return request({ path: "/teams" });
 }
 
-function createTeam(name) {
+function createTeam(payload) {
   return request({
     path: "/teams",
     method: "POST",
-    data: { name }
+    data: payload
   });
 }
 
@@ -62,6 +72,8 @@ function downloadAssistantData() {
 
 module.exports = {
   updateLanguage,
+  updateProfile,
+  discoverTeam,
   listTeams,
   createTeam,
   leaveTeam,

@@ -8,31 +8,37 @@
 
 <view class="page-overlay composer-overlay" wx:if="{{hasTeam && composerOpen}}">
   <view class="overlay-card composer-card">
-    <view class="section-header">
-      <view class="section-title">{{composerMode === 'edit' ? i18n.page.composerEdit : i18n.page.composerCreate}}</view>
+    <view class="section-header composer-header">
+      <view class="section-title" wx:if="{{composerKind === 'schedule' && composerMode === 'edit'}}">{{i18n.page.composerEditSchedule}}</view>
+      <view class="section-title" wx:elif="{{composerKind === 'schedule'}}">{{i18n.page.composerCreateSchedule}}</view>
+      <view class="section-title" wx:elif="{{composerMode === 'edit'}}">{{i18n.page.composerEditFinance}}</view>
+      <view class="section-title" wx:else>{{i18n.page.composerCreateFinance}}</view>
     </view>
 
-    <view class="form-card">
+    <view class="form-card" wx:if="{{composerKind === 'schedule'}}">
       <view class="field-group">
         <view class="field-label">{{i18n.page.titleLabel}}</view>
-        <input class="input-control" placeholder="{{i18n.page.titlePlaceholder}}" value="{{form.title}}" bindinput="onInputTitle" />
+        <input class="input-control" placeholder="{{i18n.page.titlePlaceholder}}" value="{{scheduleForm.title}}" bindinput="onInputScheduleTitle" />
       </view>
 
-      <view class="field-grid">
-        <view class="field-group field-half">
-          <view class="field-label">{{i18n.page.descriptionLabel}}</view>
-          <input class="input-control" placeholder="{{i18n.page.descriptionPlaceholder}}" value="{{form.description}}" bindinput="onInputDescription" />
-        </view>
+      <view class="field-group">
+        <view class="field-label">{{i18n.page.descriptionLabel}}</view>
+        <input class="input-control" placeholder="{{i18n.page.descriptionPlaceholder}}" value="{{scheduleForm.description}}" bindinput="onInputScheduleDescription" />
+      </view>
 
-        <view class="field-group field-half">
-          <view class="field-label">{{i18n.page.locationLabel}}</view>
-          <button class="btn-secondary location-btn" bindtap="chooseLocation">{{i18n.page.locationPick}}</button>
-          <view class="info-panel location-preview" wx:if="{{form.placeName}}">
-            <view class="location-name">{{form.placeName}}</view>
-            <view class="muted small-text">{{i18n.common.gpsPrefix}}: {{form.placeLatitude}}, {{form.placeLongitude}}</view>
-            <view class="location-clear" bindtap="clearLocation">{{i18n.page.locationClear}}</view>
-          </view>
+      <view class="field-group">
+        <view class="field-label">{{i18n.page.locationLabel}}</view>
+        <input class="input-control" placeholder="{{i18n.page.locationPlaceholder}}" value="{{scheduleForm.locationText}}" bindinput="onInputScheduleLocation" />
+        <view class="quick-field-head">
+          <view class="field-hint">{{i18n.page.locationQuickTitle}}</view>
+          <view class="quick-clear" wx:if="{{scheduleForm.locationText}}" bindtap="clearScheduleLocation">{{i18n.page.locationClear}}</view>
         </view>
+        <view class="quick-list" wx:if="{{placeSuggestions.length}}">
+          <block wx:for="{{placeSuggestions}}" wx:key="id">
+            <view class="quick-chip" data-target="schedule" data-name="{{item.name}}" bindtap="onPickPlace">{{item.name}}</view>
+          </block>
+        </view>
+        <view class="field-hint" wx:else>{{i18n.page.noPlaceSuggestions}}</view>
       </view>
 
       <view class="switch-row">
@@ -42,7 +48,7 @@
         </view>
         <checkbox-group bindchange="onToggleAllDay">
           <label class="checkbox-line">
-            <checkbox value="allDay" checked="{{form.is_all_day}}" color="#07c160" />
+            <checkbox value="allDay" checked="{{scheduleForm.is_all_day}}" color="#07c160" />
           </label>
         </checkbox-group>
       </view>
@@ -50,15 +56,15 @@
       <view class="field-grid">
         <view class="field-group field-half">
           <view class="field-label">{{i18n.page.startDate}}</view>
-          <picker mode="date" value="{{form.date}}" bindchange="onDateChange">
-            <view class="picker {{form.date ? '' : 'placeholder'}}">{{form.date || i18n.page.selectDate}}</view>
+          <picker mode="date" value="{{scheduleForm.date}}" bindchange="onScheduleDateChange">
+            <view class="picker {{scheduleForm.date ? '' : 'placeholder'}}">{{scheduleForm.date || i18n.page.selectDate}}</view>
           </picker>
         </view>
 
-        <view class="field-group field-half" wx:if="{{!form.is_all_day}}">
+        <view class="field-group field-half" wx:if="{{!scheduleForm.is_all_day}}">
           <view class="field-label">{{i18n.page.startTime}}</view>
-          <picker mode="time" value="{{form.start_clock}}" bindchange="onTimeChange">
-            <view class="picker">{{form.start_clock}}</view>
+          <picker mode="time" value="{{scheduleForm.start_clock}}" bindchange="onScheduleStartTimeChange">
+            <view class="picker">{{scheduleForm.start_clock}}</view>
           </picker>
         </view>
       </view>
@@ -66,102 +72,244 @@
       <view class="field-grid">
         <view class="field-group field-half">
           <view class="field-label">{{i18n.page.endDate}}</view>
-          <picker mode="date" value="{{form.end_date}}" bindchange="onEndDateChange">
-            <view class="picker {{form.end_date ? '' : 'placeholder'}}">{{form.end_date || i18n.page.selectDate}}</view>
+          <picker mode="date" value="{{scheduleForm.end_date}}" bindchange="onScheduleEndDateChange">
+            <view class="picker {{scheduleForm.end_date ? '' : 'placeholder'}}">{{scheduleForm.end_date || i18n.page.selectDate}}</view>
           </picker>
         </view>
 
-        <view class="field-group field-half" wx:if="{{!form.is_all_day}}">
+        <view class="field-group field-half" wx:if="{{!scheduleForm.is_all_day}}">
           <view class="field-label">{{i18n.page.endTime}}</view>
-          <picker mode="time" value="{{form.end_clock}}" bindchange="onEndTimeChange">
-            <view class="picker">{{form.end_clock}}</view>
+          <picker mode="time" value="{{scheduleForm.end_clock}}" bindchange="onScheduleEndTimeChange">
+            <view class="picker">{{scheduleForm.end_clock}}</view>
+          </picker>
+        </view>
+      </view>
+    </view>
+
+    <view class="form-card" wx:else>
+      <view class="field-row compact-row">
+        <view class="field-group amount-group">
+          <view class="field-label">{{i18n.page.amount}}</view>
+          <input class="input-control" type="digit" placeholder="{{i18n.page.amountPlaceholder}}" value="{{financeForm.amount}}" bindinput="onInputAmount" />
+        </view>
+        <view class="field-group type-group">
+          <view class="field-label">{{i18n.page.type}}</view>
+          <view class="type-toggle">
+            <view class="type-option {{financeForm.type === 'expense' ? 'type-option-active type-expense' : ''}}" data-type="expense" bindtap="onFinanceTypeChange">{{i18n.page.expense}}</view>
+            <view class="type-option {{financeForm.type === 'income' ? 'type-option-active type-income' : ''}}" data-type="income" bindtap="onFinanceTypeChange">{{i18n.page.income}}</view>
+          </view>
+        </view>
+      </view>
+
+      <view class="field-row compact-row">
+        <view class="field-group field-half">
+          <view class="field-label">{{i18n.page.date}}</view>
+          <picker mode="date" value="{{financeForm.occurredDate}}" bindchange="onFinanceDateChange">
+            <view class="picker">{{financeForm.occurredDate}}</view>
+          </picker>
+        </view>
+        <view class="field-group field-half">
+          <view class="field-label">{{i18n.page.time}}</view>
+          <picker mode="time" value="{{financeForm.occurredTime}}" bindchange="onFinanceTimeChange">
+            <view class="picker">{{financeForm.occurredTime}}</view>
           </picker>
         </view>
       </view>
 
-      <view class="composer-actions">
-        <view class="action-side action-side-left">
-          <view wx:if="{{composerMode === 'edit'}}" class="danger-mini-btn" bindtap="confirmDeleteEditingSchedule">{{i18n.common.delete}}</view>
+      <view class="field-group">
+        <view class="field-label">{{i18n.page.category}}</view>
+        <input class="input-control" placeholder="{{i18n.page.categoryPlaceholder}}" value="{{financeForm.category}}" bindinput="onInputCategory" />
+        <view class="field-hint">{{i18n.page.categoryQuickTitle}}</view>
+        <view class="quick-list" wx:if="{{categorySuggestions.length}}">
+          <block wx:for="{{categorySuggestions}}" wx:key="*this">
+            <view class="quick-chip {{financeForm.category === item ? 'quick-chip-active' : ''}}" data-category="{{item}}" bindtap="onPickCategory">{{item}}</view>
+          </block>
         </view>
-        <button class="btn-primary composer-submit" bindtap="submitSchedule">{{composerMode === 'edit' ? i18n.page.saveEdit : i18n.page.createRecord}}</button>
-        <view class="action-side action-side-right">
-          <view class="composer-close action-cancel" bindtap="closeComposer">{{i18n.common.cancel}}</view>
+      </view>
+
+      <view class="field-group">
+        <view class="field-label">{{i18n.page.locationLabel}}</view>
+        <input class="input-control" placeholder="{{i18n.page.locationPlaceholder}}" value="{{financeForm.locationText}}" bindinput="onInputFinanceLocation" />
+        <view class="quick-field-head">
+          <view class="field-hint">{{i18n.page.locationQuickTitle}}</view>
+          <view class="quick-clear" wx:if="{{financeForm.locationText}}" bindtap="clearFinanceLocation">{{i18n.page.locationClear}}</view>
         </view>
+        <view class="quick-list" wx:if="{{placeSuggestions.length}}">
+          <block wx:for="{{placeSuggestions}}" wx:key="id">
+            <view class="quick-chip" data-target="finance" data-name="{{item.name}}" bindtap="onPickPlace">{{item.name}}</view>
+          </block>
+        </view>
+        <view class="field-hint" wx:else>{{i18n.page.noPlaceSuggestions}}</view>
+      </view>
+
+      <view class="field-group">
+        <view class="field-label">{{i18n.page.note}}</view>
+        <input class="input-control" placeholder="{{i18n.page.notePlaceholder}}" value="{{financeForm.note}}" bindinput="onInputFinanceNote" />
+      </view>
+    </view>
+
+    <view class="composer-actions">
+      <view class="action-side action-side-left">
+        <view wx:if="{{composerMode === 'edit'}}" class="danger-mini-btn" bindtap="confirmDeleteEditing">{{i18n.common.delete}}</view>
+      </view>
+      <button class="btn-primary composer-submit" bindtap="submitComposer">{{composerMode === 'edit' ? i18n.page.saveEdit : i18n.page.createRecord}}</button>
+      <view class="action-side action-side-right">
+        <view class="composer-close action-cancel" bindtap="closeComposer">{{i18n.common.cancel}}</view>
       </view>
     </view>
   </view>
 </view>
 
-<view wx:if="{{hasTeam}}" class="page-shell">
+<view class="page-overlay calendar-overlay" wx:if="{{hasTeam && calendarOpen}}">
+  <view class="overlay-card calendar-card">
+    <view class="calendar-head">
+      <view class="calendar-title">{{i18n.page.calendarTitle}}</view>
+      <view class="calendar-close" bindtap="closeCalendar">{{i18n.common.cancel}}</view>
+    </view>
+    <view class="calendar-toolbar">
+      <view class="calendar-shift" data-direction="-1" bindtap="shiftCalendarMonth">{{i18n.page.calendarPrev}}</view>
+      <view class="calendar-month">{{calendarTitle}}</view>
+      <view class="calendar-shift" data-direction="1" bindtap="shiftCalendarMonth">{{i18n.page.calendarNext}}</view>
+    </view>
+    <view class="calendar-weekdays">
+      <view class="calendar-weekday">{{i18n.page.weekdaySun}}</view>
+      <view class="calendar-weekday">{{i18n.page.weekdayMon}}</view>
+      <view class="calendar-weekday">{{i18n.page.weekdayTue}}</view>
+      <view class="calendar-weekday">{{i18n.page.weekdayWed}}</view>
+      <view class="calendar-weekday">{{i18n.page.weekdayThu}}</view>
+      <view class="calendar-weekday">{{i18n.page.weekdayFri}}</view>
+      <view class="calendar-weekday">{{i18n.page.weekdaySat}}</view>
+    </view>
+    <view class="calendar-grid">
+      <block wx:for="{{calendarWeeks}}" wx:key="index" wx:for-item="week">
+        <view class="calendar-row">
+          <block wx:for="{{week}}" wx:key="dayKey">
+            <view
+              class="calendar-day {{item.isCurrentMonth ? 'calendar-day-current' : 'calendar-day-muted'}} {{item.isToday ? 'calendar-day-today' : ''}} {{item.isAnchor ? 'calendar-day-anchor' : ''}}"
+              style="{{item.heatStyle}}"
+              data-day-key="{{item.dayKey}}"
+              bindtap="onPickCalendarDay"
+            >
+              <view class="calendar-day-text">{{item.dayText}}</view>
+            </view>
+          </block>
+        </view>
+      </block>
+    </view>
+  </view>
+</view>
+
+<view wx:if="{{hasTeam}}" class="page-shell timeline-shell">
   <view class="page-stack">
     <view class="sticky-stack">
-      <view class="card info-card">
-        <view class="info-head">
-          <view class="info-copy">{{i18n.page.heroInfo}}</view>
-          <view class="info-filter {{showPendingOnly ? 'info-filter-active' : ''}}" bindtap="togglePendingFilter">{{i18n.page.pendingOnly}}</view>
+      <view class="card timeline-hero">
+        <view class="timeline-hero-head">
+          <view class="timeline-hero-titleline">
+            <view class="timeline-title">{{i18n.page.heroTitle}}</view>
+            <view class="timeline-copy">{{i18n.page.heroInfo}}</view>
+          </view>
+          <view class="today-action" bindtap="backToToday">{{i18n.page.backToToday}}</view>
         </view>
-      </view>
-      <view class="card create-strip" bindtap="openCreateComposer">
-        <view class="create-strip-plus">+</view>
       </view>
     </view>
 
-    <view class="record-flow">
-      <block wx:if="{{visibleSchedules.length}}">
-        <block wx:for="{{visibleSchedules}}" wx:key="id">
-          <view class="swipe-row">
-            <view class="edit-bg" style="width: {{item.editWidth}}px;">
-              <view class="edit-action" data-index="{{index}}" bindtap="onTapEdit">{{i18n.common.edit}}</view>
-            </view>
-            <view class="left-action-bg {{item.leftActionClass}}" style="width: {{item.leftActionWidth}}px;">
-              <view class="left-action {{item.leftActionClass}}" data-index="{{index}}" bindtap="onTapLeftAction">{{item.leftActionText}}</view>
-            </view>
-            <view
-              id="schedule-{{item.id}}"
-              class="swipe-content"
-              data-index="{{index}}"
-              style="transform: translateX({{item.offsetX}}px);"
-              bindtouchstart="onSwipeStart"
-              bindtouchmove="onSwipeMove"
-              bindtouchend="onSwipeEnd"
-            >
-              <view class="card schedule-card">
-                <view class="schedule-head">
-                  <view class="title">{{item.title || i18n.page.unnamed}}</view>
-                  <view class="status status-{{item.status || 'pending'}}">{{item.statusText}}</view>
-                </view>
-                <view class="detail-grid">
-                  <view class="detail-cell">
-                    <view class="detail-label">{{i18n.page.creator}}</view>
-                    <view class="detail-value">{{item.creatorName}}</view>
-                  </view>
-                  <view class="detail-cell">
-                    <view class="detail-label">{{i18n.page.place}}</view>
-                    <view class="detail-value">{{item.locationText}}</view>
-                  </view>
-                  <view class="detail-cell">
-                    <view class="detail-label">{{i18n.page.start}}</view>
-                    <view class="detail-value">{{item.startText}}</view>
-                  </view>
-                  <view class="detail-cell">
-                    <view class="detail-label">{{i18n.page.end}}</view>
-                    <view class="detail-value">{{item.endText}}</view>
-                  </view>
-                  <view class="detail-cell detail-cell-full">
-                    <view class="detail-label">{{i18n.page.note}}</view>
-                    <view class="detail-value">{{item.noteText}}</view>
-                  </view>
-                </view>
+    <view class="timeline-flow">
+      <block wx:if="{{visibleDays.length}}">
+        <block wx:for="{{visibleDays}}" wx:key="day_key" wx:for-item="day" wx:for-index="dayIndex">
+          <view id="day-{{day.day_key}}" class="day-section">
+            <view class="day-rail-hit" data-day-key="{{day.day_key}}" bindtap="openCalendar">
+              <view class="day-rail">
+                <view class="day-month">{{day.monthText}}</view>
+                <view class="day-number {{day.is_today ? 'day-number-today' : ''}}">{{day.dayText}}</view>
+                <view class="day-weekday">{{day.weekdayText}}</view>
               </view>
+            </view>
+
+            <view class="day-body">
+              <view class="day-head">
+                <view class="day-title">{{day.titleText}}</view>
+                <view class="day-count">{{day.countText}}</view>
+              </view>
+
+              <block wx:for="{{day.items}}" wx:key="idKey" wx:for-item="entry" wx:for-index="itemIndex">
+                <view class="swipe-row">
+                  <view class="edit-bg" style="width: {{entry.editWidth}}px;">
+                    <view class="edit-action" data-day-index="{{dayIndex}}" data-item-index="{{itemIndex}}" bindtap="onTapEdit">{{i18n.common.edit}}</view>
+                  </view>
+                  <view class="left-action-bg" style="width: {{entry.leftActionWidth}}px;">
+                    <view class="left-action" data-day-index="{{dayIndex}}" data-item-index="{{itemIndex}}" bindtap="onTapCopy">{{i18n.page.copyAction}}</view>
+                  </view>
+
+                  <view
+                    class="swipe-content"
+                    data-day-index="{{dayIndex}}"
+                    data-item-index="{{itemIndex}}"
+                    style="transform: translateX({{entry.offsetX}}px);"
+                    bindtouchstart="onSwipeStart"
+                    bindtouchmove="onSwipeMove"
+                    bindtouchend="onSwipeEnd"
+                  >
+                    <view class="card timeline-card timeline-card-{{entry.kind}}">
+                      <view class="card-top">
+                        <view class="card-head">
+                          <view class="card-title">{{entry.titleText}}</view>
+                          <view class="kind-pill kind-pill-{{entry.kind}}">{{entry.kindLabel}}</view>
+                        </view>
+                        <view wx:if="{{entry.amountText}}" class="amount-text amount-text-{{entry.kind}}">{{entry.amountText}}</view>
+                      </view>
+
+                      <view class="meta-row">
+                        <view class="meta-chip">{{entry.subtitleText}}</view>
+                        <view class="meta-chip meta-chip-category meta-chip-category-{{entry.kind}}" wx:if="{{entry.metaSecondaryText}}">{{entry.metaSecondaryText}}</view>
+                      </view>
+
+                      <view class="detail-grid">
+                        <view class="detail-cell">
+                          <view class="detail-label">{{i18n.page.place}}</view>
+                          <view class="detail-value">{{entry.locationText}}</view>
+                        </view>
+                        <view class="detail-cell detail-cell-full">
+                          <view class="detail-label">{{i18n.page.note}}</view>
+                          <view class="detail-value">{{entry.noteText}}</view>
+                        </view>
+                      </view>
+                    </view>
+                  </view>
+                </view>
+              </block>
             </view>
           </view>
         </block>
       </block>
-      <view wx:else class="card empty-card">
+
+      <view wx:else class="card empty-card timeline-empty">
         <view class="empty-title">{{i18n.page.emptyTitle}}</view>
         <view class="empty-text">{{i18n.page.emptyText}}</view>
       </view>
-      <view wx:if="{{loadingMoreFuture}}" class="future-loading">{{i18n.page.futureLoading}}</view>
+    </view>
+  </view>
+
+  <view class="floating-actions">
+    <view class="floating-anchor">
+      <view class="floating-pop" wx:if="{{isFilterOpen}}">
+        <view class="floating-pop-item floating-pop-item-schedule {{activeKindFilter === 'schedule' ? 'floating-pop-item-active' : ''}}" data-kind="schedule" bindtap="selectKindFilter">{{i18n.page.filterActionSchedule}}</view>
+        <view class="floating-pop-item floating-pop-item-income {{activeKindFilter === 'income' ? 'floating-pop-item-active' : ''}}" data-kind="income" bindtap="selectKindFilter">{{i18n.page.filterActionIncome}}</view>
+        <view class="floating-pop-item floating-pop-item-expense {{activeKindFilter === 'expense' ? 'floating-pop-item-active' : ''}}" data-kind="expense" bindtap="selectKindFilter">{{i18n.page.filterActionExpense}}</view>
+      </view>
+      <view class="floating-fab floating-fab-filter {{isFilterOpen ? 'floating-fab-open' : ''}}" bindtap="toggleFilterMenu">
+        <image class="fab-icon-image" src="../../assets/icons/filter-funnel.svg" mode="aspectFit" />
+      </view>
+    </view>
+
+    <view class="floating-anchor">
+      <view class="floating-pop" wx:if="{{isQuickCreateOpen}}">
+        <view class="floating-pop-item floating-pop-item-schedule" bindtap="openCreateSchedule">{{i18n.page.createSchedule}}</view>
+        <view class="floating-pop-item floating-pop-item-expense" bindtap="openCreateExpense">{{i18n.page.createExpense}}</view>
+        <view class="floating-pop-item floating-pop-item-income" bindtap="openCreateIncome">{{i18n.page.createIncome}}</view>
+      </view>
+      <view class="floating-fab floating-fab-plus {{isQuickCreateOpen ? 'floating-fab-open' : ''}}" bindtap="toggleQuickCreate">
+        <image class="fab-icon-image" src="../../assets/icons/plus.svg" mode="aspectFit" />
+      </view>
     </view>
   </view>
 </view>

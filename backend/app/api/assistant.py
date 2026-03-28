@@ -1,38 +1,55 @@
 from __future__ import annotations
 
+import logging
 import os
 import tempfile
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.i18n import normalize_locale, translate
 from app.crud.team import is_team_member
 from app.schemas.assistant import AssistantExecuteIn, AssistantExecuteOut, AssistantUndoIn
 from app.services.assistant_orchestrator import execute_assistant, get_orchestration_debug, undo_last_assistant_batch
 from app.services.data_export_service import build_user_data_export
-from sqlalchemy.orm import Session
 
-from app.services.llm.transcribe import transcribe_audio_file
+from app.services.llm.transcribe import TranscriptionError, transcribe_audio_file
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post("/transcribe")
-async def transcribe(file: UploadFile = File(...)) -> dict:
-    suffix = os.path.splitext(file.filename or "audio.wav")[1] or ".wav"
+async def transcribe(file: UploadFile = File(...), current_user=Depends(get_current_user)) -> dict:
+    settings = get_settings()
+    filename = file.filename or "audio.wav"
+    suffix = (os.path.splitext(filename)[1] or ".wav").lower()
+    content_type = (file.content_type or "").lower()
+    if suffix not in settings.ALLOWED_AUDIO_EXTENSIONS:
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="AUDIO_TYPE_NOT_ALLOWED")
+    if content_type and content_type not in settings.ALLOWED_AUDIO_CONTENT_TYPES:
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="AUDIO_TYPE_NOT_ALLOWED")
+
+    content = await file.read(settings.MAX_UPLOAD_BYTES + 1)
+    await file.close()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="AUDIO_FILE_EMPTY")
+    if len(content) > settings.MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="AUDIO_FILE_TOO_LARGE")
+
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-        content = await file.read()
         temp_file.write(content)
         temp_path = temp_file.name
 
     try:
         text = transcribe_audio_file(temp_path)
         return {"text": text}
-    except RuntimeError as exc:
-        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
+    except TranscriptionError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
@@ -59,17 +76,12 @@ def execute(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
-    except Exception:
-        result = {
-            "reply": translate(locale, "assistant.internal_error"),
-            "status": "unsupported",
-            "intent": "unsupported",
-            "session_id": None,
-            "missing_slots": [],
-            "pending_action": None,
-            "data": {"can_undo": False},
-            "cards": [],
-        }
+    except Exception as exc:
+        logger.exception("Assistant execute failed", extra={"team_id": str(payload.team_id), "user_id": str(current_user.id)})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=translate(locale, "assistant.internal_error"),
+        ) from exc
 
     return AssistantExecuteOut(**result)
 
@@ -90,22 +102,19 @@ def undo(
             user_id=current_user.id,
             locale=locale,
         )
-    except Exception:
-        result = {
-            "reply": translate(locale, "assistant.internal_error"),
-            "status": "unsupported",
-            "intent": "unsupported",
-            "session_id": None,
-            "missing_slots": [],
-            "pending_action": None,
-            "data": {"can_undo": False},
-            "cards": [],
-        }
+    except Exception as exc:
+        logger.exception("Assistant undo failed", extra={"team_id": str(payload.team_id), "user_id": str(current_user.id)})
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=translate(locale, "assistant.internal_error"),
+        ) from exc
     return AssistantExecuteOut(**result)
 
 
 @router.get("/orchestration")
 def orchestration(current_user=Depends(get_current_user)) -> dict:
+    if not get_settings().debug_endpoints_enabled():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     return get_orchestration_debug()
 
 

@@ -23,5 +23,8 @@ async def exchange_wechat_code_for_openid(code: str) -> str:
             if openid:
                 return openid
 
+    if settings.is_production() or not settings.ALLOW_INSECURE_DEV_AUTH:
+        raise RuntimeError("WeChat login exchange is unavailable.")
+
     digest = hashlib.sha256(code.encode("utf-8")).hexdigest()[:24]
     return f"dev_{digest}"

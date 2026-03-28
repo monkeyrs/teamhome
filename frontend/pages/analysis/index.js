@@ -1,5 +1,5 @@
 const { bootstrapSession, getCurrentTeamState } = require("../../utils/bootstrap");
-const { applyPageLocale } = require("../../utils/i18n");
+const { applyPageLocale, translateMessage } = require("../../utils/i18n");
 const { getDataVersion } = require("../../utils/data-sync");
 const analysisApi = require("./modules/api");
 const { buildAnalysis } = require("./modules/metrics");
@@ -62,16 +62,7 @@ Page({
   },
 
   t(path, params = {}) {
-    const parts = path.split(".");
-    let current = this.data.i18n;
-    parts.forEach((part) => {
-      current = current && current[part];
-    });
-    let text = typeof current === "string" ? current : path;
-    Object.keys(params).forEach((key) => {
-      text = text.replace(`{${key}}`, params[key]);
-    });
-    return text;
+    return translateMessage(this.data.i18n, path, params);
   },
 
   async initPage() {

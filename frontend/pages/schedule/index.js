@@ -1,90 +1,80 @@
-const { request } = require("../../utils/request");
 const { bootstrapSession, getCurrentTeamState } = require("../../utils/bootstrap");
-const { applyPageLocale } = require("../../utils/i18n");
-const { getDataVersion } = require("../../utils/data-sync");
+const { applyPageLocale, translateMessage } = require("../../utils/i18n");
+const { getDataVersion, markDataDirty } = require("../../utils/data-sync");
+const scheduleApi = require("./modules/api");
+const {
+  buildComposerClosedState,
+  buildFinanceCreateComposerState,
+  buildFinanceDuplicateComposerState,
+  buildFinanceEditComposerState,
+  buildScheduleCreateComposerState,
+  buildScheduleDuplicateComposerState,
+  buildScheduleEditComposerState
+} = require("./modules/composer-state");
+const {
+  confirmDeleteEditing,
+  submitComposer
+} = require("./modules/mutations");
+const {
+  addDays,
+  buildCategorySuggestions,
+  buildEmptyFinanceForm,
+  buildEmptyScheduleForm,
+  formatDate,
+  toWindowEndIso,
+  toWindowStartIso
+} = require("./modules/state");
+const {
+  buildCalendarWeeks,
+  buildVisibleDays,
+  monthStartFromKey
+} = require("./modules/timeline");
+const {
+  buildSwipeMoveState,
+  closeSwipeRows,
+  resolveSwipeEnd
+} = require("./modules/swipe");
 
-const LEFT_ACTION_WIDTH = 88;
+const COPY_BUTTON_WIDTH = 88;
 const EDIT_BUTTON_WIDTH = 88;
 const HARD_ACTION_THRESHOLD = 160;
 const MAX_SWIPE = 220;
 const SWIPE_LAZINESS = 54;
 const DIRECTION_LOCK_THRESHOLD = 12;
-const FUTURE_PRELOAD_DAYS = 30;
-const TOP_LOAD_THRESHOLD = 80;
-
-function pad(value) {
-  return `${value}`.padStart(2, "0");
-}
-
-function formatDate(date) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function formatClock(date) {
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function addDays(date, days) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function toLocalIso(datePart, timePart, allDay) {
-  const finalTime = allDay ? "00:00" : (timePart || "00:00");
-  return `${datePart}T${finalTime}:00+08:00`;
-}
-
-function toWindowEndIso(date) {
-  return `${formatDate(date)}T23:59:59+08:00`;
-}
-
-function buildSchedulePath(teamId, options = {}) {
-  const query = [`team_id=${teamId}`];
-  if (options.windowStart) {
-    query.push(`window_start=${encodeURIComponent(options.windowStart)}`);
-  }
-  if (options.windowEnd) {
-    query.push(`window_end=${encodeURIComponent(options.windowEnd)}`);
-  }
-  return `/schedules?${query.join("&")}`;
-}
-
-function buildEmptyForm(dateText) {
-  return {
-    title: "",
-    description: "",
-    placeName: "",
-    placeLatitude: null,
-    placeLongitude: null,
-    is_all_day: false,
-    date: dateText,
-    start_clock: "09:00",
-    end_date: dateText,
-    end_clock: "10:00"
-  };
-}
+const PAST_WINDOW_DAYS = 120;
+const FUTURE_WINDOW_DAYS = 90;
 
 Page({
   data: {
     loading: false,
     teams: [],
     teamIndex: 0,
-    schedules: [],
-    visibleSchedules: [],
     hasTeam: true,
     teamReady: false,
     currentTeamId: "",
     scheduleSyncVersion: 0,
-    showPendingOnly: false,
-    futureWindowEnd: "",
-    loadingMoreFuture: false,
-    hasMoreFuture: true,
+    financeSyncVersion: 0,
+    days: [],
+    visibleDays: [],
+    activeKindFilter: "",
     initialScrollDone: false,
+    isQuickCreateOpen: false,
+    isFilterOpen: false,
+    calendarOpen: false,
+    calendarTitle: "",
+    calendarWeeks: [],
+    calendarMonthKey: "",
+    calendarAnchorDay: "",
+    calendarMaxCount: 0,
     composerOpen: false,
+    composerKind: "schedule",
     composerMode: "create",
     editingId: "",
-    form: buildEmptyForm(formatDate(new Date())),
+    scheduleForm: buildEmptyScheduleForm(),
+    financeForm: buildEmptyFinanceForm(),
+    placeSuggestions: [],
+    commonCategories: [],
+    categorySuggestions: [],
     swipeStartX: 0,
     swipeStartY: 0,
     swipeDirection: "",
@@ -104,12 +94,23 @@ Page({
       await this.initPage();
       return;
     }
-    const syncVersion = getDataVersion("schedule", teamId);
-    if (syncVersion > (this.data.scheduleSyncVersion || 0)) {
+    const financeVersion = getDataVersion("finance", teamId);
+    const scheduleVersion = getDataVersion("schedule", teamId);
+    if (
+      financeVersion > (this.data.financeSyncVersion || 0) ||
+      scheduleVersion > (this.data.scheduleSyncVersion || 0)
+    ) {
       this.setData({ loading: true });
       try {
-        await this.loadSchedules(teamId);
-        this.setData({ scheduleSyncVersion: syncVersion });
+        await Promise.all([
+          this.loadTimeline(teamId),
+          this.loadCommonCategories(teamId),
+          this.loadPlaceSuggestions(teamId, "")
+        ]);
+        this.setData({
+          financeSyncVersion: financeVersion,
+          scheduleSyncVersion: scheduleVersion
+        });
       } catch (err) {
         wx.showToast({ title: this.t("common.loadFailed"), icon: "none" });
       } finally {
@@ -120,20 +121,17 @@ Page({
 
   applyLocale() {
     applyPageLocale(this, "schedule");
-    this.setSchedules((this.data.schedules || []).map((item) => this.normalizeSchedule(item)));
+    this.setData({
+      visibleDays: this.buildVisibleDays(this.data.days, this.data.activeKindFilter),
+      categorySuggestions: this.buildCategorySuggestions(
+        this.data.financeForm.category,
+        this.data.financeForm.type
+      )
+    });
   },
 
   t(path, params = {}) {
-    const parts = path.split(".");
-    let current = this.data.i18n;
-    parts.forEach((part) => {
-      current = current && current[part];
-    });
-    let text = typeof current === "string" ? current : path;
-    Object.keys(params).forEach((key) => {
-      text = text.replace(`{${key}}`, params[key]);
-    });
-    return text;
+    return translateMessage(this.data.i18n, path, params);
   },
 
   async initPage() {
@@ -146,24 +144,44 @@ Page({
         hasTeam: !!teamId,
         teamReady: true,
         currentTeamId: teamId,
+        scheduleSyncVersion: 0,
+        financeSyncVersion: 0,
+        activeKindFilter: "",
+        days: [],
+        visibleDays: [],
+        initialScrollDone: false,
+        isQuickCreateOpen: false,
+        isFilterOpen: false,
+        calendarOpen: false,
+        calendarTitle: "",
+        calendarWeeks: [],
+        calendarMonthKey: "",
+        calendarAnchorDay: "",
+        calendarMaxCount: 0,
         composerOpen: false,
+        composerKind: "schedule",
         composerMode: "create",
         editingId: "",
-        form: buildEmptyForm(today),
-        futureWindowEnd: "",
-        loadingMoreFuture: false,
-        hasMoreFuture: true,
-        initialScrollDone: false,
-        scheduleSyncVersion: 0
+        scheduleForm: buildEmptyScheduleForm(today),
+        financeForm: buildEmptyFinanceForm(new Date()),
+        placeSuggestions: [],
+        commonCategories: [],
+        categorySuggestions: []
       });
       if (!teamId) {
-        this.setData({ schedules: [], visibleSchedules: [] });
         return;
       }
       const teamIndex = Math.max(0, teams.findIndex((item) => item.id === teamId));
       this.setData({ teamIndex });
-      await this.loadSchedules(teamId, { resetFutureWindow: true });
-      this.setData({ scheduleSyncVersion: getDataVersion("schedule", teamId) });
+      await Promise.all([
+        this.loadTimeline(teamId),
+        this.loadCommonCategories(teamId),
+        this.loadPlaceSuggestions(teamId, "")
+      ]);
+      this.setData({
+        financeSyncVersion: getDataVersion("finance", teamId),
+        scheduleSyncVersion: getDataVersion("schedule", teamId)
+      });
     } catch (err) {
       wx.showToast({ title: this.t("common.initFailed"), icon: "none" });
     } finally {
@@ -175,67 +193,80 @@ Page({
     return this.data.teams[this.data.teamIndex] || null;
   },
 
-  formatDisplayTime(value, isAllDay) {
-    if (!value) return this.t("common.unset");
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    const dateText = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-    return isAllDay ? `${dateText} ${this.t("page.fullDay")}` : `${dateText} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-  },
-
-  normalizeSchedule(item) {
-    const status = item.status || "pending";
-    const nextStatus = status === "completed" ? "pending" : "completed";
-    return {
-      ...item,
-      creatorName: item.creator_nickname || this.t("common.teamMember"),
-      startText: this.formatDisplayTime(item.start_time, item.is_all_day),
-      endText: item.end_time ? this.formatDisplayTime(item.end_time, item.is_all_day) : this.t("common.unset"),
-      statusText: status === "completed"
-        ? this.t("page.statusCompleted")
-        : status === "cancelled"
-          ? this.t("page.statusCancelled")
-          : this.t("page.statusPending"),
-      locationText: item.location || this.t("common.unset"),
-      noteText: item.description || this.t("common.noNote"),
-      recordSortTime: new Date(item.start_time || item.created_at || 0).getTime() || 0,
-      offsetX: 0,
-      leftActionWidth: 0,
-      editWidth: 0,
-      leftActionText: nextStatus === "completed" ? this.t("page.markDone") : this.t("page.markPending"),
-      leftActionClass: nextStatus === "completed" ? "left-action-complete" : "left-action-pending"
-    };
-  },
-
-  async loadSchedules(teamId, options = {}) {
-    const futureWindowEnd = options.windowEnd || toWindowEndIso(addDays(new Date(), FUTURE_PRELOAD_DAYS));
-    const data = await request({ path: buildSchedulePath(teamId, { windowEnd: futureWindowEnd }) });
-    const schedules = (data || [])
-      .map((item) => this.normalizeSchedule(item))
-      .sort((a, b) => b.recordSortTime - a.recordSortTime);
-    this.setSchedules(schedules);
-    this.setData({
-      futureWindowEnd,
-      hasMoreFuture: true
+  buildCalendarWeeks(monthKey, anchorDay) {
+    return buildCalendarWeeks({
+      monthKey,
+      anchorDay,
+      days: this.data.days
     });
-    if (options.resetFutureWindow) {
-      wx.nextTick(() => this.scrollToTodayAnchor());
+  },
+
+  buildVisibleDays(days = this.data.days, activeKindFilter = this.data.activeKindFilter) {
+    return buildVisibleDays({
+      days,
+      activeKindFilter,
+      t: this.t.bind(this)
+    });
+  },
+
+  async loadTimeline(teamId) {
+    const windowStart = toWindowStartIso(addDays(new Date(), -PAST_WINDOW_DAYS));
+    const windowEnd = toWindowEndIso(addDays(new Date(), FUTURE_WINDOW_DAYS));
+    const data = await scheduleApi.listTimeline(teamId, { windowStart, windowEnd });
+    const days = Array.isArray(data && data.days) ? data.days : [];
+    this.setData({
+      days,
+      visibleDays: this.buildVisibleDays(days, this.data.activeKindFilter)
+    });
+    wx.nextTick(() => this.scrollToTodayAnchor());
+  },
+
+  async loadCommonCategories(teamId) {
+    const categories = await scheduleApi.listFinanceCategories(teamId);
+    this.setData({
+      commonCategories: Array.isArray(categories) ? categories : [],
+      categorySuggestions: this.buildCategorySuggestions(
+        this.data.financeForm.category,
+        this.data.financeForm.type
+      )
+    });
+  },
+
+  async loadPlaceSuggestions(teamId, query) {
+    if (!teamId) return;
+    try {
+      const places = await scheduleApi.listPlaces(teamId, query);
+      this.setData({ placeSuggestions: Array.isArray(places) ? places : [] });
+    } catch (err) {
+      this.setData({ placeSuggestions: [] });
     }
   },
 
-  setSchedules(schedules) {
-    const visibleSchedules = this.data.showPendingOnly
-      ? schedules.filter((item) => item.status !== "completed")
-      : schedules.slice();
-    this.setData({ schedules, visibleSchedules });
+  presetCategories(type) {
+    const page = this.data.i18n.page || {};
+    const source = type === "income" ? page.incomePresets : page.expensePresets;
+    return Array.isArray(source) ? source.slice() : [];
+  },
+
+  buildCategorySuggestions(query, type) {
+    return buildCategorySuggestions({
+      query,
+      presets: this.presetCategories(type),
+      commonCategories: this.data.commonCategories || []
+    });
   },
 
   getTodayAnchorId() {
     const today = formatDate(new Date());
-    const exact = this.data.visibleSchedules.find((item) => (item.start_time || "").slice(0, 10) === today);
-    if (exact) return `schedule-${exact.id}`;
-    const boundary = this.data.visibleSchedules.find((item) => (item.start_time || "").slice(0, 10) <= today);
-    return boundary ? `schedule-${boundary.id}` : "";
+    const visibleDays = this.data.visibleDays || [];
+    const exact = visibleDays.find((day) => day.day_key === today);
+    if (exact) return `day-${exact.day_key}`;
+    for (let index = visibleDays.length - 1; index >= 0; index -= 1) {
+      if (visibleDays[index].day_key <= today) {
+        return `day-${visibleDays[index].day_key}`;
+      }
+    }
+    return visibleDays.length ? `day-${visibleDays[0].day_key}` : "";
   },
 
   scrollToTodayAnchor() {
@@ -249,219 +280,317 @@ Page({
       const rect = res && res[0];
       const viewport = res && res[1];
       if (!rect || !viewport) return;
-      const top = Math.max((viewport.scrollTop || 0) + rect.top - 120, 0);
+      const top = Math.max((viewport.scrollTop || 0) + rect.top - 132, 0);
       wx.pageScrollTo({ scrollTop: top, duration: 0 });
       this.setData({ initialScrollDone: true });
     });
   },
 
-  async loadMoreFutureSchedules() {
-    const team = this.currentTeam();
-    if (!team || this.data.loadingMoreFuture || !this.data.hasMoreFuture) return;
-    const currentEnd = this.data.futureWindowEnd ? new Date(this.data.futureWindowEnd) : addDays(new Date(), FUTURE_PRELOAD_DAYS);
-    const nextEnd = addDays(currentEnd, FUTURE_PRELOAD_DAYS);
-    const windowStart = this.data.futureWindowEnd;
-    const windowEnd = toWindowEndIso(nextEnd);
-    this.setData({ loadingMoreFuture: true });
-    try {
-      const data = await request({ path: buildSchedulePath(team.id, { windowStart, windowEnd }) });
-      const incoming = (data || []).map((item) => this.normalizeSchedule(item));
-      if (!incoming.length) {
-        this.setData({ hasMoreFuture: false, loadingMoreFuture: false });
-        return;
-      }
-      const mergedMap = new Map(this.data.schedules.map((item) => [item.id, item]));
-      incoming.forEach((item) => mergedMap.set(item.id, item));
-      const merged = Array.from(mergedMap.values()).sort((a, b) => b.recordSortTime - a.recordSortTime);
-      this.setSchedules(merged);
-      this.setData({
-        futureWindowEnd: windowEnd,
-        loadingMoreFuture: false,
-        hasMoreFuture: true
-      });
-    } catch (err) {
-      this.setData({ loadingMoreFuture: false });
-      wx.showToast({ title: this.t("common.loadFailed"), icon: "none" });
-    }
+  backToToday() {
+    this.setData({ initialScrollDone: false });
+    wx.nextTick(() => this.scrollToTodayAnchor());
   },
 
-  openCreateComposer() {
-    const dateText = this.data.form.date || formatDate(new Date());
+  openCalendar(event) {
+    const dayKey = (event.currentTarget.dataset.dayKey || this.getTodayAnchorId().replace("day-", "") || formatDate(new Date()));
+    const next = this.buildCalendarWeeks(dayKey, dayKey);
     this.setData({
-      composerOpen: true,
-      composerMode: "create",
-      editingId: "",
-      form: buildEmptyForm(dateText)
+      calendarOpen: true,
+      calendarTitle: next.title,
+      calendarWeeks: next.weeks,
+      calendarMonthKey: next.monthKey,
+      calendarAnchorDay: dayKey,
+      calendarMaxCount: next.maxCount,
+      isQuickCreateOpen: false,
+      isFilterOpen: false
     });
+  },
+
+  closeCalendar() {
+    this.setData({
+      calendarOpen: false
+    });
+  },
+
+  shiftCalendarMonth(event) {
+    const direction = Number(event.currentTarget.dataset.direction || 0);
+    const base = monthStartFromKey(this.data.calendarMonthKey || formatDate(new Date()));
+    base.setMonth(base.getMonth() + direction);
+    const next = this.buildCalendarWeeks(formatDate(base), this.data.calendarAnchorDay);
+    this.setData({
+      calendarTitle: next.title,
+      calendarWeeks: next.weeks,
+      calendarMonthKey: next.monthKey,
+      calendarMaxCount: next.maxCount
+    });
+  },
+
+  onPickCalendarDay(event) {
+    const dayKey = event.currentTarget.dataset.dayKey;
+    if (!dayKey) return;
+    this.setData({
+      calendarAnchorDay: dayKey,
+      calendarOpen: false
+    });
+    wx.nextTick(() => this.scrollToDay(dayKey));
+  },
+
+  scrollToDay(dayKey) {
+    const anchorId = `day-${dayKey}`;
+    const query = wx.createSelectorQuery();
+    query.select(`#${anchorId}`).boundingClientRect();
+    query.selectViewport().scrollOffset();
+    query.exec((res) => {
+      const rect = res && res[0];
+      const viewport = res && res[1];
+      if (!rect || !viewport) {
+        wx.showToast({ title: this.t("page.dayNotLoaded"), icon: "none" });
+        return;
+      }
+      const top = Math.max((viewport.scrollTop || 0) + rect.top - 132, 0);
+      wx.pageScrollTo({ scrollTop: top, duration: 220 });
+    });
+  },
+
+  toggleFilterMenu() {
+    this.setData({
+      isFilterOpen: !this.data.isFilterOpen,
+      isQuickCreateOpen: false
+    });
+  },
+
+  selectKindFilter(event) {
+    const kind = event.currentTarget.dataset.kind || "";
+    const nextFilter = this.data.activeKindFilter === kind ? "" : kind;
+    this.setData({
+      activeKindFilter: nextFilter,
+      isFilterOpen: false,
+      visibleDays: this.buildVisibleDays(this.data.days, nextFilter)
+    });
+  },
+
+  openCreateSchedule() {
+    const dateText = formatDate(new Date());
+    this.setData(buildScheduleCreateComposerState(dateText));
+    this.loadPlaceSuggestions((this.currentTeam() || {}).id, "");
+  },
+
+  openCreateExpense() {
+    this.openFinanceComposer("expense");
+  },
+
+  openCreateIncome() {
+    this.openFinanceComposer("income");
+  },
+
+  openFinanceComposer(type) {
+    const now = new Date();
+    this.setData(buildFinanceCreateComposerState({
+      type,
+      now,
+      categorySuggestions: this.buildCategorySuggestions("", type)
+    }));
+    this.loadPlaceSuggestions((this.currentTeam() || {}).id, "");
+  },
+
+  openScheduleEditor(item) {
+    this.setData(buildScheduleEditComposerState(item));
+    this.loadPlaceSuggestions((this.currentTeam() || {}).id, item.location || "");
+  },
+
+  openScheduleDuplicate(item) {
+    this.setData(buildScheduleDuplicateComposerState(item));
+    this.loadPlaceSuggestions((this.currentTeam() || {}).id, item.location || "");
+  },
+
+  openFinanceEditor(item) {
+    const type = item.kind === "income" ? "income" : "expense";
+    const category = item.category || "";
+    this.setData(buildFinanceEditComposerState(
+      item,
+      this.buildCategorySuggestions(category, type)
+    ));
+    this.loadPlaceSuggestions((this.currentTeam() || {}).id, item.location || "");
+  },
+
+  openFinanceDuplicate(item) {
+    const type = item.kind === "income" ? "income" : "expense";
+    this.setData(buildFinanceDuplicateComposerState(
+      item,
+      this.buildCategorySuggestions(item.category || "", type)
+    ));
+    this.loadPlaceSuggestions((this.currentTeam() || {}).id, item.location || "");
   },
 
   closeComposer() {
-    const dateText = this.data.form.date || formatDate(new Date());
+    this.setData(buildComposerClosedState(new Date()));
+  },
+
+  toggleQuickCreate() {
     this.setData({
-      composerOpen: false,
-      composerMode: "create",
-      editingId: "",
-      form: buildEmptyForm(dateText)
+      isQuickCreateOpen: !this.data.isQuickCreateOpen,
+      isFilterOpen: false
     });
   },
 
-  openEditComposer(item) {
-    if (!item) return;
-    const start = item.start_time ? new Date(item.start_time) : new Date();
-    const end = item.end_time ? new Date(item.end_time) : start;
-    this.setData({
-      composerOpen: true,
-      composerMode: "edit",
-      editingId: item.id,
-      form: {
-        title: item.title || "",
-        description: item.description || "",
-        placeName: item.location || "",
-        placeLatitude: item.location_latitude,
-        placeLongitude: item.location_longitude,
-        is_all_day: !!item.is_all_day,
-        date: formatDate(start),
-        start_clock: formatClock(start),
-        end_date: formatDate(end),
-        end_clock: formatClock(end)
-      }
-    });
+  onInputScheduleTitle(event) {
+    this.setData({ "scheduleForm.title": event.detail.value });
   },
 
-  togglePendingFilter() {
-    const showPendingOnly = !this.data.showPendingOnly;
-    const visibleSchedules = showPendingOnly
-      ? this.data.schedules.filter((item) => item.status !== "completed")
-      : this.data.schedules.slice();
-    this.setData({ showPendingOnly, visibleSchedules });
+  onInputScheduleDescription(event) {
+    this.setData({ "scheduleForm.description": event.detail.value });
   },
 
-  goAssistantPage() {
-    wx.switchTab({ url: "/pages/assistant/index" });
+  onInputScheduleLocation(event) {
+    const value = event.detail.value;
+    this.setData({ "scheduleForm.locationText": value });
+    this.loadPlaceSuggestions((this.currentTeam() || {}).id, value);
   },
 
-  onInputTitle(event) {
-    this.setData({ "form.title": event.detail.value });
+  clearScheduleLocation() {
+    this.setData({ "scheduleForm.locationText": "" });
+    this.loadPlaceSuggestions((this.currentTeam() || {}).id, "");
   },
 
-  onInputDescription(event) {
-    this.setData({ "form.description": event.detail.value });
+  onPickPlace(event) {
+    const target = event.currentTarget.dataset.target;
+    const name = event.currentTarget.dataset.name;
+    if (!target || !name) return;
+    if (target === "schedule") {
+      this.setData({ "scheduleForm.locationText": name });
+      return;
+    }
+    this.setData({ "financeForm.locationText": name });
   },
 
-  chooseLocation() {
-    wx.chooseLocation({
-      success: (res) => {
-        this.setData({
-          "form.placeName": res.name || res.address || "",
-          "form.placeLatitude": typeof res.latitude === "number" ? res.latitude : null,
-          "form.placeLongitude": typeof res.longitude === "number" ? res.longitude : null
-        });
-      },
-      fail: (err) => {
-        if (err && /cancel/i.test(err.errMsg || "")) return;
-        wx.showToast({ title: this.t("common.mapPickFailed"), icon: "none" });
-      }
-    });
-  },
-
-  clearLocation() {
-    this.setData({
-      "form.placeName": "",
-      "form.placeLatitude": null,
-      "form.placeLongitude": null
-    });
-  },
-
-  onDateChange(event) {
+  onScheduleDateChange(event) {
     const date = event.detail.value;
     this.setData({
-      "form.date": date,
-      "form.end_date": this.data.form.end_date || date
+      "scheduleForm.date": date,
+      "scheduleForm.end_date": this.data.scheduleForm.end_date || date
     });
   },
 
-  onTimeChange(event) {
-    this.setData({ "form.start_clock": event.detail.value });
+  onScheduleStartTimeChange(event) {
+    this.setData({ "scheduleForm.start_clock": event.detail.value });
   },
 
-  onEndDateChange(event) {
-    this.setData({ "form.end_date": event.detail.value });
+  onScheduleEndDateChange(event) {
+    this.setData({ "scheduleForm.end_date": event.detail.value });
   },
 
-  onEndTimeChange(event) {
-    this.setData({ "form.end_clock": event.detail.value });
+  onScheduleEndTimeChange(event) {
+    this.setData({ "scheduleForm.end_clock": event.detail.value });
   },
 
   onToggleAllDay(event) {
-    this.setData({ "form.is_all_day": !!event.detail.value.length });
+    this.setData({ "scheduleForm.is_all_day": !!event.detail.value.length });
   },
 
-  buildFormPayload() {
-    const form = this.data.form;
-    return {
-      title: form.title,
-      description: form.description || null,
-      location: form.placeName || null,
-      location_latitude: form.placeLatitude,
-      location_longitude: form.placeLongitude,
-      is_all_day: form.is_all_day,
-      start_time: toLocalIso(form.date, form.start_clock, form.is_all_day),
-      end_time: toLocalIso(form.end_date || form.date, form.end_clock, form.is_all_day)
-    };
+  onInputAmount(event) {
+    this.setData({ "financeForm.amount": event.detail.value });
   },
 
-  async submitSchedule() {
-    const team = this.currentTeam();
-    const form = this.data.form;
-    if (!team || !form.title || !form.date) {
-      wx.showToast({ title: this.t("common.requiredFields"), icon: "none" });
-      return;
-    }
-
-    const payload = this.buildFormPayload();
-
-    try {
-      if (this.data.composerMode === "edit" && this.data.editingId) {
-        await request({
-          path: `/schedules/${this.data.editingId}`,
-          method: "PUT",
-          data: payload
-        });
-        wx.showToast({ title: this.t("common.updateSuccess"), icon: "success" });
-      } else {
-        await request({
-          path: "/schedules",
-          method: "POST",
-          data: {
-            ...payload,
-            team_id: team.id
-          }
-        });
-        wx.showToast({ title: this.t("common.createSuccess"), icon: "success" });
-      }
-      this.closeComposer();
-      await this.loadSchedules(team.id);
-    } catch (err) {
-      wx.showToast({
-        title: this.data.composerMode === "edit" ? this.t("common.updateFailed") : this.t("common.createFailed"),
-        icon: "none"
-      });
-    }
-  },
-
-  closeSwipeRows(listKey) {
-    const items = this.data[listKey].slice();
-    items.forEach((item) => {
-      item.offsetX = 0;
-      item.leftActionWidth = 0;
-      item.editWidth = 0;
+  onFinanceTypeChange(event) {
+    const type = event.currentTarget.dataset.type;
+    if (!type) return;
+    this.setData({
+      "financeForm.type": type,
+      categorySuggestions: this.buildCategorySuggestions(this.data.financeForm.category, type)
     });
-    this.setData({ [listKey]: items });
   },
 
-  onPageScroll(event) {
-    if ((event.scrollTop || 0) <= TOP_LOAD_THRESHOLD) {
-      this.loadMoreFutureSchedules();
+  onFinanceDateChange(event) {
+    this.setData({ "financeForm.occurredDate": event.detail.value });
+  },
+
+  onFinanceTimeChange(event) {
+    this.setData({ "financeForm.occurredTime": event.detail.value });
+  },
+
+  onInputCategory(event) {
+    const value = event.detail.value;
+    this.setData({
+      "financeForm.category": value,
+      categorySuggestions: this.buildCategorySuggestions(value, this.data.financeForm.type)
+    });
+  },
+
+  onPickCategory(event) {
+    const category = event.currentTarget.dataset.category;
+    if (!category) return;
+    this.setData({
+      "financeForm.category": category,
+      categorySuggestions: this.buildCategorySuggestions(category, this.data.financeForm.type)
+    });
+  },
+
+  onInputFinanceLocation(event) {
+    const value = event.detail.value;
+    this.setData({ "financeForm.locationText": value });
+    this.loadPlaceSuggestions((this.currentTeam() || {}).id, value);
+  },
+
+  clearFinanceLocation() {
+    this.setData({ "financeForm.locationText": "" });
+    this.loadPlaceSuggestions((this.currentTeam() || {}).id, "");
+  },
+
+  onInputFinanceNote(event) {
+    this.setData({ "financeForm.note": event.detail.value });
+  },
+
+  async afterMutation(teamId, scopes) {
+    markDataDirty({ teamId, scopes });
+    await Promise.all([
+      this.loadTimeline(teamId),
+      this.loadCommonCategories(teamId),
+      this.loadPlaceSuggestions(teamId, "")
+    ]);
+    this.setData({
+      scheduleSyncVersion: getDataVersion("schedule", teamId),
+      financeSyncVersion: getDataVersion("finance", teamId)
+    });
+  },
+
+  async submitComposer() {
+    await submitComposer({
+      team: this.currentTeam(),
+      composerKind: this.data.composerKind,
+      composerMode: this.data.composerMode,
+      editingId: this.data.editingId,
+      scheduleForm: this.data.scheduleForm,
+      financeForm: this.data.financeForm,
+      t: this.t.bind(this),
+      api: scheduleApi,
+      closeComposer: this.closeComposer.bind(this),
+      afterMutation: this.afterMutation.bind(this)
+    });
+  },
+
+  closeSwipeRows() {
+    this.setData({ visibleDays: closeSwipeRows(this.data.visibleDays) });
+  },
+
+  openEditorByIndex(dayIndex, itemIndex) {
+    const day = this.data.visibleDays[dayIndex];
+    const item = day && day.items[itemIndex];
+    if (!item) return;
+    if (item.kind === "schedule") {
+      this.openScheduleEditor(item);
+    } else {
+      this.openFinanceEditor(item);
+    }
+  },
+
+  duplicateByIndex(dayIndex, itemIndex) {
+    const day = this.data.visibleDays[dayIndex];
+    const item = day && day.items[itemIndex];
+    if (!item) return;
+    if (item.kind === "schedule") {
+      this.openScheduleDuplicate(item);
+    } else {
+      this.openFinanceDuplicate(item);
     }
   },
 
@@ -474,12 +603,14 @@ Page({
   },
 
   onSwipeMove(event) {
+    const dayIndex = Number(event.currentTarget.dataset.dayIndex);
+    const itemIndex = Number(event.currentTarget.dataset.itemIndex);
+    if (Number.isNaN(dayIndex) || Number.isNaN(itemIndex)) return;
+
     const currentX = event.changedTouches[0].clientX;
     const currentY = event.changedTouches[0].clientY;
     const deltaX = currentX - this.data.swipeStartX;
     const deltaY = currentY - this.data.swipeStartY;
-    const index = Number(event.currentTarget.dataset.index);
-    if (Number.isNaN(index)) return;
 
     let direction = this.data.swipeDirection;
     if (!direction) {
@@ -489,143 +620,77 @@ Page({
       direction = Math.abs(deltaY) >= Math.abs(deltaX) ? "vertical" : "horizontal";
       this.setData({ swipeDirection: direction });
     }
-    if (direction !== "horizontal") {
-      return;
-    }
+    if (direction !== "horizontal") return;
 
-    const schedules = this.data.visibleSchedules.slice();
-    schedules.forEach((item, itemIndex) => {
-      if (itemIndex !== index) {
-        item.offsetX = 0;
-        item.leftActionWidth = 0;
-        item.editWidth = 0;
-      }
+    this.setData({
+      visibleDays: buildSwipeMoveState({
+        visibleDays: this.data.visibleDays,
+        dayIndex,
+        itemIndex,
+        deltaX,
+        laziness: SWIPE_LAZINESS,
+        maxSwipe: MAX_SWIPE
+      })
     });
-
-    const horizontalDistance = Math.abs(deltaX);
-    if (horizontalDistance <= SWIPE_LAZINESS) {
-      schedules[index].offsetX = 0;
-      schedules[index].leftActionWidth = 0;
-      schedules[index].editWidth = 0;
-      this.setData({ visibleSchedules: schedules });
-      return;
-    }
-
-    if (deltaX < 0) {
-      const offsetX = Math.max(deltaX + SWIPE_LAZINESS, -MAX_SWIPE);
-      schedules[index].offsetX = offsetX;
-      schedules[index].leftActionWidth = Math.min(Math.abs(offsetX), MAX_SWIPE);
-      schedules[index].editWidth = 0;
-    } else {
-      const offsetX = Math.min(deltaX - SWIPE_LAZINESS, MAX_SWIPE);
-      schedules[index].offsetX = offsetX;
-      schedules[index].editWidth = Math.min(offsetX, MAX_SWIPE);
-      schedules[index].leftActionWidth = 0;
-    }
-    this.setData({ visibleSchedules: schedules });
   },
 
-  async onSwipeEnd(event) {
-    const index = Number(event.currentTarget.dataset.index);
-    if (Number.isNaN(index)) return;
-    const schedules = this.data.visibleSchedules.slice();
-    const current = schedules[index];
-    if (!current) return;
+  onSwipeEnd(event) {
+    const dayIndex = Number(event.currentTarget.dataset.dayIndex);
+    const itemIndex = Number(event.currentTarget.dataset.itemIndex);
+    if (Number.isNaN(dayIndex) || Number.isNaN(itemIndex)) return;
 
-    if (this.data.swipeDirection !== "horizontal") {
-      current.offsetX = 0;
-      current.leftActionWidth = 0;
-      current.editWidth = 0;
-      this.setData({ visibleSchedules: schedules, swipeDirection: "" });
+    const result = resolveSwipeEnd({
+      visibleDays: this.data.visibleDays,
+      dayIndex,
+      itemIndex,
+      swipeDirection: this.data.swipeDirection,
+      hardActionThreshold: HARD_ACTION_THRESHOLD,
+      copyButtonWidth: COPY_BUTTON_WIDTH,
+      editButtonWidth: EDIT_BUTTON_WIDTH
+    });
+    this.setData({
+      visibleDays: result.visibleDays,
+      swipeDirection: ""
+    });
+    if (result.action === "duplicate") {
+      this.duplicateByIndex(dayIndex, itemIndex);
       return;
     }
-
-    if (current.offsetX <= -HARD_ACTION_THRESHOLD) {
-      await this.toggleStatusByIndex(index);
-      this.setData({ swipeDirection: "" });
-      return;
+    if (result.action === "edit") {
+      this.openEditorByIndex(dayIndex, itemIndex);
     }
-
-    if (current.offsetX >= HARD_ACTION_THRESHOLD) {
-      this.openEditComposer(current);
-      this.closeSwipeRows("visibleSchedules");
-      this.setData({ swipeDirection: "" });
-      return;
-    }
-
-    if (current.offsetX < 0) {
-      const shouldOpenLeftAction = Math.abs(current.offsetX) >= LEFT_ACTION_WIDTH / 2;
-      current.offsetX = shouldOpenLeftAction ? -LEFT_ACTION_WIDTH : 0;
-      current.leftActionWidth = shouldOpenLeftAction ? LEFT_ACTION_WIDTH : 0;
-      current.editWidth = 0;
-    } else {
-      const shouldOpenEdit = current.offsetX >= EDIT_BUTTON_WIDTH / 2;
-      current.offsetX = shouldOpenEdit ? EDIT_BUTTON_WIDTH : 0;
-      current.editWidth = shouldOpenEdit ? EDIT_BUTTON_WIDTH : 0;
-      current.leftActionWidth = 0;
-    }
-
-    this.setData({ visibleSchedules: schedules, swipeDirection: "" });
   },
 
-  async onTapLeftAction(event) {
-    const index = Number(event.currentTarget.dataset.index);
-    if (Number.isNaN(index)) return;
-    await this.toggleStatusByIndex(index);
+  onTapCopy(event) {
+    const dayIndex = Number(event.currentTarget.dataset.dayIndex);
+    const itemIndex = Number(event.currentTarget.dataset.itemIndex);
+    if (Number.isNaN(dayIndex) || Number.isNaN(itemIndex)) return;
+    this.duplicateByIndex(dayIndex, itemIndex);
+    this.closeSwipeRows();
   },
 
   onTapEdit(event) {
-    const index = Number(event.currentTarget.dataset.index);
-    if (Number.isNaN(index)) return;
-    const current = this.data.visibleSchedules[index];
-    this.openEditComposer(current);
-    this.closeSwipeRows("visibleSchedules");
+    const dayIndex = Number(event.currentTarget.dataset.dayIndex);
+    const itemIndex = Number(event.currentTarget.dataset.itemIndex);
+    if (Number.isNaN(dayIndex) || Number.isNaN(itemIndex)) return;
+    this.openEditorByIndex(dayIndex, itemIndex);
+    this.closeSwipeRows();
   },
 
-  async toggleStatusByIndex(index) {
-    const current = this.data.visibleSchedules[index];
-    const team = this.currentTeam();
-    if (!current || !team) return;
-    const nextStatus = current.status === "completed" ? "pending" : "completed";
-    try {
-      await request({
-        path: `/schedules/${current.id}`,
-        method: "PUT",
-        data: {
-          title: current.title,
-          description: current.description || null,
-          location: current.location || null,
-          location_latitude: current.location_latitude,
-          location_longitude: current.location_longitude,
-          is_all_day: !!current.is_all_day,
-          start_time: current.start_time,
-          end_time: current.end_time,
-          status: nextStatus
-        }
-      });
-      await this.loadSchedules(team.id);
-    } catch (err) {
-      wx.showToast({ title: this.t("common.updateFailed"), icon: "none" });
-    }
-  },
-
-  async confirmDeleteEditingSchedule() {
-    if (this.data.composerMode !== "edit" || !this.data.editingId) return;
-    const team = this.currentTeam();
-    if (!team) return;
-    const { confirm } = await wx.showModal({
-      title: this.t("page.deleteTitle"),
-      content: this.t("page.deleteContent"),
-      confirmColor: "#fa5151"
+  async confirmDeleteEditing() {
+    await confirmDeleteEditing({
+      team: this.currentTeam(),
+      composerMode: this.data.composerMode,
+      composerKind: this.data.composerKind,
+      editingId: this.data.editingId,
+      t: this.t.bind(this),
+      api: scheduleApi,
+      closeComposer: this.closeComposer.bind(this),
+      afterMutation: this.afterMutation.bind(this)
     });
-    if (!confirm) return;
-    try {
-      await request({ path: `/schedules/${this.data.editingId}`, method: "DELETE" });
-      wx.showToast({ title: this.t("page.deleted"), icon: "success" });
-      this.closeComposer();
-      await this.loadSchedules(team.id);
-    } catch (err) {
-      wx.showToast({ title: this.t("common.deleteFailed"), icon: "none" });
-    }
+  },
+
+  goAssistantPage() {
+    wx.switchTab({ url: "/pages/assistant/index" });
   }
 });

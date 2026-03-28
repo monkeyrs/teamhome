@@ -2,17 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+RUN pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \
+    pip config set install.trusted-host mirrors.aliyun.com
+
 COPY backend/requirements.txt /app/backend/requirements.txt
-ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
 RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir \
-    --index-url ${PIP_INDEX_URL} \
-    --extra-index-url ${PIP_EXTRA_INDEX_URL} \
-    --trusted-host pypi.tuna.tsinghua.edu.cn \
-    --trusted-host pypi.org \
-    --trusted-host files.pythonhosted.org \
-    -r /app/backend/requirements.txt
+    pip install --no-cache-dir -r /app/backend/requirements.txt
 
 COPY backend /app/backend
 

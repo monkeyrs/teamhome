@@ -12,6 +12,74 @@
       </view>
     </view>
 
+    <view class="page-overlay sheet-overlay" wx:if="{{teamDialogOpen}}" bindtap="closeTeamDialog">
+      <view class="bottom-sheet" catchtap="noop">
+        <view class="section-title">{{teamDialogMode === 'join' ? i18n.page.teamJoinSheetTitle : i18n.page.teamCreateSheetTitle}}</view>
+        <view class="overlay-text">{{teamDialogMode === 'join' ? i18n.page.teamJoinSheetText : i18n.page.teamCreateSheetText}}</view>
+
+        <view class="field-group">
+          <view class="field-label">{{i18n.page.teamNameLabel}}</view>
+          <view class="info-panel">{{teamDialogName}}</view>
+        </view>
+
+        <view class="field-group">
+          <view class="field-label">{{i18n.page.teamPassword}}</view>
+          <view class="verify-code-wrap" bindtap="focusTeamDialogPasswordInput">
+            <view class="verify-code-grid">
+              <block wx:for="{{teamDialogPasswordCells}}" wx:key="index">
+                <view class="verify-code-cell {{teamDialogPasswordFocus ? 'verify-code-cell-focus' : ''}}">
+                  {{item}}
+                </view>
+              </block>
+            </view>
+            <input
+              class="verify-code-hidden-input"
+              type="number"
+              maxlength="4"
+              placeholder="{{i18n.page.teamPasswordPlaceholder}}"
+              value="{{teamDialogPassword}}"
+              focus="{{teamDialogPasswordFocus}}"
+              bindinput="onTeamDialogPasswordInput"
+              bindblur="onTeamDialogPasswordBlur"
+            />
+          </view>
+          <view class="field-hint">{{i18n.page.teamPasswordHint}}</view>
+        </view>
+
+        <view class="sheet-actions">
+          <button class="btn-secondary sheet-btn" bindtap="closeTeamDialog">{{i18n.common.cancel}}</button>
+          <button class="btn-primary sheet-btn" bindtap="confirmTeamDialog" loading="{{teamDialogSubmitting}}" disabled="{{teamDialogSubmitting}}">
+            {{teamDialogMode === 'join' ? i18n.common.join : i18n.common.create}}
+          </button>
+        </view>
+      </view>
+    </view>
+
+    <view class="page-overlay" wx:if="{{nicknamePromptOpen}}">
+      <view class="overlay-card nickname-overlay-card" catchtap="noop">
+        <view class="overlay-title">{{i18n.page.nicknameSetupTitle}}</view>
+        <view class="overlay-text">{{canUseNicknameInput ? i18n.page.nicknameSetupText : i18n.page.nicknameSetupFallbackText}}</view>
+
+        <form bindsubmit="submitProfile">
+          <view class="profile-fields">
+            <input
+              class="input-control"
+              name="nickname"
+              type="{{canUseNicknameInput ? 'nickname' : 'text'}}"
+              maxlength="20"
+              placeholder="{{i18n.page.nicknamePlaceholder}}"
+              value="{{profileNickname}}"
+              bindinput="onProfileNicknameInput"
+            />
+            <view class="field-hint">{{canUseNicknameInput ? i18n.page.profileOfficialTip : i18n.page.profileFallbackTip}}</view>
+            <button class="btn-primary profile-save-btn" form-type="submit" loading="{{savingProfile}}" disabled="{{savingProfile}}">
+              {{i18n.page.profileAction}}
+            </button>
+          </view>
+        </form>
+      </view>
+    </view>
+
     <view class="card compact-card">
       <view class="team-compact" bindtap="toggleTeamPanel">
         <view class="team-line">{{i18n.page.currentTeam}}: {{teams.length ? teams[teamIndex].name : i18n.page.noTeam}}</view>
@@ -27,13 +95,28 @@
             value="{{teamName}}"
             bindinput="onTeamNameInput"
           />
-          <button class="btn-primary team-join-btn" bindtap="createOrJoinTeam">{{i18n.common.join}}</button>
+          <button class="btn-primary team-join-btn" loading="{{teamActionLoading}}" disabled="{{teamActionLoading}}" bindtap="createOrJoinTeam">{{i18n.page.teamActionPrimary}}</button>
         </view>
 
         <block wx:for="{{teams}}" wx:key="id">
           <view class="team-option">
-            <view class="team-option-name" data-index="{{index}}" bindtap="onSelectTeam">{{item.name}}</view>
-            <view class="team-remove team-switch-btn" data-team-id="{{item.id}}" data-team-name="{{item.name}}" bindtap="confirmLeaveTeam">{{i18n.common.leave}}</view>
+            <view class="team-option-main" data-index="{{index}}" bindtap="onSelectTeam">
+              <view class="team-option-head">
+                <view class="team-option-name">{{item.name}}</view>
+                <view class="team-option-meta">{{item.member_count}}/30</view>
+              </view>
+            </view>
+            <view class="team-option-actions">
+              <view
+                wx:if="{{item.join_password}}"
+                class="team-eye-btn"
+                data-team-id="{{item.id}}"
+                bindtap="toggleTeamPassword"
+              >
+                {{item.passwordButtonText}}
+              </view>
+              <view class="team-remove team-switch-btn" data-team-id="{{item.id}}" data-team-name="{{item.name}}" bindtap="confirmLeaveTeam">{{i18n.common.leave}}</view>
+            </view>
           </view>
         </block>
       </view>

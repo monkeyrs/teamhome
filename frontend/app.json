@@ -1,7 +1,6 @@
 {
   "pages": [
     "pages/assistant/index",
-    "pages/assistant-graph/index",
     "pages/schedule/index",
     "pages/finance/index",
     "pages/analysis/index"
@@ -13,14 +12,6 @@
     "backgroundColor": "#f7f7f7",
     "backgroundTextStyle": "dark"
   },
-  "permission": {
-    "scope.userLocation": {
-      "desc": "用于为日程和费用选择地点"
-    }
-  },
-  "requiredPrivateInfos": [
-    "chooseLocation"
-  ],
   "tabBar": {
     "color": "#7a7e83",
     "selectedColor": "#07c160",
@@ -33,11 +24,7 @@
       },
       {
         "pagePath": "pages/schedule/index",
-        "text": "Schedule"
-      },
-      {
-        "pagePath": "pages/finance/index",
-        "text": "Finance"
+        "text": "Timeline"
       },
       {
         "pagePath": "pages/analysis/index",

@@ -3,12 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_settings
-from app.core.database import engine
-from app.core.schema_sync import ensure_dev_schema
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    security_issues = settings.validate_runtime_security()
+    if security_issues:
+        joined = " ".join(security_issues)
+        raise RuntimeError(f"Unsafe runtime configuration: {joined}")
 
     app = FastAPI(title=settings.PROJECT_NAME, version=settings.VERSION)
     app.add_middleware(
@@ -28,15 +30,6 @@ def create_app() -> FastAPI:
         return response
 
     app.include_router(api_router)
-
-    if settings.DB_AUTO_CREATE:
-        from app.core.database import Base
-        from app import models  # noqa: F401
-
-        @app.on_event("startup")
-        def _create_tables() -> None:
-            Base.metadata.create_all(bind=engine)
-            ensure_dev_schema(engine)
 
     return app
 

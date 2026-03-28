@@ -19,7 +19,14 @@ from app.crud.schedule import create_schedule, list_schedules
 from app.crud.team import is_team_member
 from app.models.finance import FinanceRecord
 from app.models.schedule import Schedule
-from app.services.assistant_session_service import clear_session, create_session, get_session, save_session
+from app.services.assistant_session_service import (
+    clear_session,
+    create_session,
+    get_session,
+    pop_undo_batch,
+    save_session,
+    save_undo_batch,
+)
 from app.services.llm.openrouter import get_llm_client
 from app.services.llm.parser import parse_finance_text, parse_schedule_text
 
@@ -56,7 +63,6 @@ ALLOWED_INTENTS = {
     INTENT_UNSUPPORTED,
 }
 
-_UNDO_BATCHES: dict[tuple[str, str], list[dict]] = {}
 _BARE_NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
 _MESSAGE_FRAGMENT_SPLIT_RE = re.compile(r"(?<=[。！？!?；;])\s+")
 _ASSISTANT_GRAPH = None
@@ -1195,13 +1201,8 @@ def _execute_step(db: Session, *, step: dict, team_id: uuid.UUID, user_id: uuid.
     return {"status": STATUS_UNSUPPORTED, "intent": INTENT_UNSUPPORTED, "reply": translate(locale, "assistant.unsupported"), "data": None}
 
 
-def _undo_key(team_id: uuid.UUID, user_id: uuid.UUID) -> tuple[str, str]:
-    return (str(team_id), str(user_id))
-
-
 def _save_undo_batch(team_id: uuid.UUID, user_id: uuid.UUID, actions: list[dict]) -> None:
-    if actions:
-        _UNDO_BATCHES[_undo_key(team_id, user_id)] = actions
+    save_undo_batch(team_id, user_id, actions)
 
 
 def _execute_planned_steps(db: Session, *, team_id: uuid.UUID, user_id: uuid.UUID, steps: list[dict], locale: str) -> dict:
@@ -2176,7 +2177,7 @@ def _undo_last_assistant_batch_local(
     locale: str = "zh-CN",
 ) -> dict:
     locale = normalize_locale(locale)
-    actions = _UNDO_BATCHES.pop(_undo_key(team_id, user_id), None)
+    actions = pop_undo_batch(team_id, user_id)
     if not actions:
         return _build_response(reply=translate(locale, "assistant.undo_empty"), status=STATUS_UNSUPPORTED, intent="undo", session_id=None, data={"can_undo": False})
 

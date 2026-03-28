@@ -22,6 +22,46 @@ function isMutationIntent(intent) {
   return MUTATION_INTENTS.has(String(intent || ""));
 }
 
+function buildProfileState(user) {
+  const nickname = (user && user.nickname) || "";
+  return {
+    nicknamePromptOpen: !nickname,
+    profileNickname: nickname,
+    profileLocked: !!nickname
+  };
+}
+
+function getTeamPasswordVisibilityMap(teams) {
+  const visibilityMap = {};
+  (teams || []).forEach((item) => {
+    visibilityMap[item.id] = !!item.passwordVisible;
+  });
+  return visibilityMap;
+}
+
+function decorateTeams(teams, visibilityMap, t) {
+  return (teams || []).map((item) => {
+    const passwordVisible = !!visibilityMap[item.id];
+    const hasPassword = !!item.join_password;
+    return {
+      ...item,
+      passwordVisible,
+      passwordButtonText: hasPassword
+        ? (passwordVisible ? item.join_password : t("page.teamPasswordToggle"))
+        : ""
+    };
+  });
+}
+
+function resetTeamPasswordVisibility(teams, t) {
+  return decorateTeams(teams, {}, t);
+}
+
+function buildPasswordCells(password) {
+  const normalized = String(password || "").slice(0, 4);
+  return Array.from({ length: 4 }, (_, index) => normalized[index] || "");
+}
+
 function syncDirtyScopesFromAssistant(teamId, response) {
   if (!teamId || !response || response.status !== "executed") return;
 
@@ -58,7 +98,9 @@ Page({
 
   applyLocale() {
     applyPageLocale(this, "assistant");
+    const visibilityMap = getTeamPasswordVisibilityMap(this.data.teams);
     this.setData({
+      teams: decorateTeams(this.data.teams, visibilityMap, (path) => this.t(path)),
       answerStatusLabel: this.formatAnswerStatus(this.data.answerStatus)
     });
   },
@@ -84,10 +126,13 @@ Page({
   async initPage() {
     this.setData({ loading: true });
     try {
-      const { teamId, teams } = await bootstrapSession();
+      const { teamId, teams, user } = await bootstrapSession();
       const teamIndex = resolveTeamIndex(teams, teamId);
+      const visibilityMap = getTeamPasswordVisibilityMap(this.data.teams);
       this.setData({
-        teams,
+        ...buildProfileState(user),
+        canUseNicknameInput: wx.canIUse("input.type.nickname"),
+        teams: decorateTeams(teams, visibilityMap, (path) => this.t(path)),
         teamIndex: teamIndex < 0 ? 0 : teamIndex,
         teamPanelOpen: teams.length === 0
       });
@@ -103,7 +148,11 @@ Page({
   },
 
   toggleTeamPanel() {
-    this.setData({ teamPanelOpen: !this.data.teamPanelOpen });
+    const nextOpen = !this.data.teamPanelOpen;
+    this.setData({
+      teamPanelOpen: nextOpen,
+      teams: resetTeamPasswordVisibility(this.data.teams, (path) => this.t(path))
+    });
   },
 
   toggleLocaleMenu() {
@@ -134,6 +183,7 @@ Page({
     const selected = this.data.teams[index];
     if (!selected) return;
     this.setData({
+      teams: resetTeamPasswordVisibility(this.data.teams, (path) => this.t(path)),
       teamIndex: index,
       teamPanelOpen: false,
       answer: "",
@@ -158,12 +208,93 @@ Page({
     this.setData({ question: event.detail.value });
   },
 
+  onProfileNicknameInput(event) {
+    this.setData({ profileNickname: event.detail.value });
+  },
+
+  async submitProfile(event) {
+    if (this.data.savingProfile || this.data.profileLocked) return;
+
+    const formNickname = (((event || {}).detail || {}).value || {}).nickname;
+    const nickname = String(formNickname != null ? formNickname : this.data.profileNickname || "").trim();
+    if (!nickname) {
+      wx.showToast({ title: this.t("page.profileNicknameRequired"), icon: "none" });
+      return;
+    }
+
+    this.setData({ savingProfile: true });
+    try {
+      const user = await assistantApi.updateProfile({ nickname });
+      setCurrentUser(user);
+      this.setData(buildProfileState(user));
+      wx.showToast({ title: this.t("page.profileSaved"), icon: "success" });
+    } catch (err) {
+      const detail = err && err.responseData && err.responseData.detail;
+      wx.showToast({ title: detail === "NICKNAME_LOCKED" ? this.t("page.profileLockedError") : this.t("common.saveFailed"), icon: "none" });
+    } finally {
+      this.setData({ savingProfile: false });
+    }
+  },
+
   async refreshTeams() {
     const teams = await assistantApi.listTeams();
     const teamIndex = syncTeamsToApp(teams);
+    const visibilityMap = getTeamPasswordVisibilityMap(this.data.teams);
     this.setData({
-      teams,
+      teams: decorateTeams(teams, visibilityMap, (path) => this.t(path)),
       teamIndex: teamIndex < 0 ? 0 : teamIndex
+    });
+    return teams;
+  },
+
+  openTeamDialog(mode, name) {
+    this.setData({
+      teamDialogOpen: true,
+      teamDialogMode: mode,
+      teamDialogName: name,
+      teamDialogPassword: "",
+      teamDialogPasswordCells: buildPasswordCells(""),
+      teamDialogSubmitting: false
+    });
+  },
+
+  closeTeamDialog() {
+    if (this.data.teamDialogSubmitting) return;
+    this.setData({
+      teamDialogOpen: false,
+      teamDialogMode: "",
+      teamDialogName: "",
+      teamDialogPassword: "",
+      teamDialogPasswordCells: buildPasswordCells(""),
+      teamDialogSubmitting: false
+    });
+  },
+
+  noop() {},
+
+  focusTeamDialogPasswordInput() {
+    this.setData({ teamDialogPasswordFocus: true });
+  },
+
+  onTeamDialogPasswordBlur() {
+    this.setData({ teamDialogPasswordFocus: false });
+  },
+
+  onTeamDialogPasswordInput(event) {
+    const value = String(event.detail.value || "").replace(/\D/g, "").slice(0, 4);
+    this.setData({
+      teamDialogPassword: value,
+      teamDialogPasswordCells: buildPasswordCells(value)
+    });
+  },
+
+  toggleTeamPassword(event) {
+    const teamId = event.currentTarget.dataset.teamId;
+    if (!teamId) return;
+    const visibilityMap = getTeamPasswordVisibilityMap(this.data.teams);
+    visibilityMap[teamId] = !visibilityMap[teamId];
+    this.setData({
+      teams: decorateTeams(this.data.teams, visibilityMap, (path) => this.t(path))
     });
   },
 
@@ -173,19 +304,97 @@ Page({
       wx.showToast({ title: this.t("page.teamNameRequired"), icon: "none" });
       return;
     }
+
+    this.setData({ teamActionLoading: true });
     try {
-      const team = await assistantApi.createTeam(name);
-      await this.refreshTeams();
-      const teamIndex = this.data.teams.findIndex((item) => item.id === team.id);
-      this.setData({
-        teamName: "",
-        teamIndex: teamIndex < 0 ? this.data.teamIndex : teamIndex,
-        teamPanelOpen: false
-      });
-      setCurrentTeamId(team.id);
-      wx.showToast({ title: this.t("page.teamJoinSuccess"), icon: "success" });
+      const discovery = await assistantApi.discoverTeam(name);
+      if (discovery.already_joined) {
+        const teams = await this.refreshTeams();
+        const joinedIndex = teams.findIndex((item) => item.name === name);
+        if (joinedIndex >= 0) {
+          this.setData({ teamIndex: joinedIndex, teamPanelOpen: false });
+          setCurrentTeamId(teams[joinedIndex].id);
+        }
+        wx.showToast({ title: this.t("page.teamAlreadyJoined"), icon: "none" });
+        return;
+      }
+      if (discovery.team_full) {
+        wx.showToast({ title: this.t("page.teamMemberLimitReached"), icon: "none" });
+        return;
+      }
+      if (discovery.exists && !discovery.requires_password) {
+        const team = await assistantApi.createTeam({ name });
+        const teams = await this.refreshTeams();
+        const joinedIndex = teams.findIndex((item) => item.id === team.id);
+        this.setData({
+          teamName: "",
+          teams: resetTeamPasswordVisibility(teams, (path) => this.t(path)),
+          teamIndex: joinedIndex < 0 ? this.data.teamIndex : joinedIndex,
+          teamPanelOpen: false
+        });
+        setCurrentTeamId(team.id);
+        wx.showToast({ title: this.t("page.teamJoinSuccess"), icon: "success" });
+        return;
+      }
+      this.openTeamDialog(discovery.exists ? "join" : "create", name);
     } catch (err) {
       wx.showToast({ title: this.t("page.teamJoinInvalid"), icon: "none" });
+    } finally {
+      this.setData({ teamActionLoading: false });
+    }
+  },
+
+  async confirmTeamDialog() {
+    const mode = this.data.teamDialogMode;
+    const name = (this.data.teamDialogName || "").trim();
+    const password = String(this.data.teamDialogPassword || "").trim();
+    if (!name) return;
+
+    if (mode === "join" && password.length !== 4) {
+      wx.showToast({ title: this.t("page.teamPasswordRequired"), icon: "none" });
+      return;
+    }
+    if (mode === "create" && password && password.length !== 4) {
+      wx.showToast({ title: this.t("page.teamPasswordRequired"), icon: "none" });
+      return;
+    }
+
+    this.setData({ teamDialogSubmitting: true });
+    try {
+      const team = await assistantApi.createTeam({
+        name,
+        password: password || undefined
+      });
+      const teams = await this.refreshTeams();
+      const teamIndex = teams.findIndex((item) => item.id === team.id);
+      this.setData({
+        teamName: "",
+        teams: resetTeamPasswordVisibility(teams, (path) => this.t(path)),
+        teamIndex: teamIndex < 0 ? this.data.teamIndex : teamIndex,
+        teamPanelOpen: false,
+        teamDialogOpen: false,
+        teamDialogMode: "",
+        teamDialogName: "",
+        teamDialogPassword: "",
+        teamDialogPasswordCells: buildPasswordCells(""),
+        teamDialogPasswordFocus: false,
+        teamDialogSubmitting: false
+      });
+      setCurrentTeamId(team.id);
+      wx.showToast({ title: mode === "create" ? this.t("page.teamCreateSuccess") : this.t("page.teamJoinSuccess"), icon: "success" });
+    } catch (err) {
+      const detail = err && err.responseData && err.responseData.detail;
+      let title = this.t("page.teamJoinInvalid");
+      if (detail === "TEAM_PASSWORD_REQUIRED") title = this.t("page.teamPasswordRequired");
+      if (detail === "TEAM_PASSWORD_INVALID") title = this.t("page.teamPasswordInvalid");
+      if (detail === "TEAM_MEMBER_LIMIT_REACHED") title = this.t("page.teamMemberLimitReached");
+      wx.showToast({ title, icon: "none" });
+      this.setData({ teamDialogSubmitting: false });
+      return;
+    } finally {
+      if (this.data.teamDialogSubmitting) {
+        this.setData({ teamDialogSubmitting: false });
+      }
     }
   },
 
