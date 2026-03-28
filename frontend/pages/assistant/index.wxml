@@ -1,13 +1,75 @@
 <view class="page-shell">
   <view class="page-stack">
     <view class="card info-card assistant-top-card">
-      <view class="info-head">
-        <view class="info-copy">{{i18n.page.heroDesc}}</view>
+      <view class="assistant-hero-head">
+        <view class="assistant-hero-copy">
+          <view class="assistant-titleline">
+            <view class="assistant-title">{{i18n.page.heroTitle}}</view>
+            <view class="assistant-copy">{{i18n.page.heroDesc}}</view>
+          </view>
+        </view>
         <view class="locale-trigger" bindtap="toggleLocaleMenu">{{i18n.app.languageButton}}</view>
       </view>
       <view class="locale-menu" wx:if="{{localeMenuOpen}}">
         <block wx:for="{{languageOptions}}" wx:key="code">
           <view class="locale-option {{locale === item.code ? 'locale-option-active' : ''}}" data-locale="{{item.code}}" bindtap="selectLanguage">{{item.label}}</view>
+        </block>
+      </view>
+
+      <view class="team-compact" bindtap="toggleTeamPanel">
+        <view class="team-summary">
+          <view class="team-line">
+            <text class="team-line-label">{{i18n.page.currentTeam}}</text>
+            <text>: {{teams.length ? teams[teamIndex].name : i18n.page.noTeam}}</text>
+          </view>
+          <view class="team-summary-meta" wx:if="{{teams.length && teams[teamIndex].isReadonly}}">{{i18n.page.teamDemoBadge}} 路 {{i18n.page.teamReadonlyBadge}}</view>
+        </view>
+        <view class="team-switch-btn">{{teamPanelOpen ? i18n.common.collapse : i18n.common.switch}}</view>
+      </view>
+
+      <view wx:if="{{teamPanelOpen}}" class="team-panel team-panel-embedded">
+        <view class="team-create-row">
+          <input
+            class="input-control team-input"
+            maxlength="20"
+            placeholder="{{i18n.page.teamInputPlaceholder}}"
+            value="{{teamName}}"
+            bindinput="onTeamNameInput"
+            bindfocus="onTeamNameFocus"
+            bindblur="onTeamNameBlur"
+          />
+          <button class="btn-primary team-join-btn" loading="{{teamActionLoading}}" disabled="{{teamActionLoading}}" bindtap="createOrJoinTeam">{{i18n.page.teamActionPrimary}}</button>
+        </view>
+        <view class="demo-entry-panel" wx:if="{{teamInputFocused}}">
+          <view class="demo-entry-title">{{i18n.page.demoEntryTitle}}</view>
+          <block wx:for="{{demoEntryOptions}}" wx:key="key">
+            <view class="demo-entry-option" data-team-name="{{item.teamName}}" bindtap="openDemoTeamFromEntry">
+              <view class="demo-entry-label">{{i18n.page.teamDemoBadge}}: {{item.displayName}}</view>
+              <view class="demo-entry-meta">{{i18n.page.demoEntryHint}}</view>
+            </view>
+          </block>
+        </view>
+
+        <block wx:for="{{teams}}" wx:key="id">
+          <view class="team-option">
+            <view class="team-option-main" data-index="{{index}}" bindtap="onSelectTeam">
+              <view class="team-option-head">
+                <view class="team-option-name">{{item.name}}</view>
+                <view class="team-option-meta">{{item.metaText}}</view>
+              </view>
+            </view>
+            <view class="team-option-actions">
+              <view
+                wx:if="{{item.join_password}}"
+                class="team-eye-btn"
+                data-team-id="{{item.id}}"
+                bindtap="toggleTeamPassword"
+              >
+                {{item.passwordButtonText}}
+              </view>
+              <view class="team-remove team-switch-btn" data-team-id="{{item.id}}" data-team-name="{{item.name}}" data-is-demo="{{item.isDemo}}" bindtap="confirmLeaveTeam">{{i18n.common.leave}}</view>
+            </view>
+          </view>
         </block>
       </view>
     </view>
@@ -80,49 +142,7 @@
       </view>
     </view>
 
-    <view class="card compact-card">
-      <view class="team-compact" bindtap="toggleTeamPanel">
-        <view class="team-line">{{i18n.page.currentTeam}}: {{teams.length ? teams[teamIndex].name : i18n.page.noTeam}}</view>
-        <view class="team-switch-btn">{{teamPanelOpen ? i18n.common.collapse : i18n.common.switch}}</view>
-      </view>
-
-      <view wx:if="{{teamPanelOpen}}" class="team-panel">
-        <view class="team-create-row">
-          <input
-            class="input-control team-input"
-            maxlength="20"
-            placeholder="{{i18n.page.teamInputPlaceholder}}"
-            value="{{teamName}}"
-            bindinput="onTeamNameInput"
-          />
-          <button class="btn-primary team-join-btn" loading="{{teamActionLoading}}" disabled="{{teamActionLoading}}" bindtap="createOrJoinTeam">{{i18n.page.teamActionPrimary}}</button>
-        </view>
-
-        <block wx:for="{{teams}}" wx:key="id">
-          <view class="team-option">
-            <view class="team-option-main" data-index="{{index}}" bindtap="onSelectTeam">
-              <view class="team-option-head">
-                <view class="team-option-name">{{item.name}}</view>
-                <view class="team-option-meta">{{item.member_count}}/30</view>
-              </view>
-            </view>
-            <view class="team-option-actions">
-              <view
-                wx:if="{{item.join_password}}"
-                class="team-eye-btn"
-                data-team-id="{{item.id}}"
-                bindtap="toggleTeamPassword"
-              >
-                {{item.passwordButtonText}}
-              </view>
-              <view class="team-remove team-switch-btn" data-team-id="{{item.id}}" data-team-name="{{item.name}}" bindtap="confirmLeaveTeam">{{i18n.common.leave}}</view>
-            </view>
-          </view>
-        </block>
-      </view>
-    </view>
-
-    <view class="card form-card">
+    <view class="card form-card assistant-form-card {{waitingFeedbackActive ? 'assistant-form-card-feedback' : ''}}">
       <view class="assistant-input-row">
         <textarea
           class="textarea-control assistant-textarea assistant-textarea-inline"
@@ -136,7 +156,7 @@
       </view>
     </view>
 
-    <view class="card" wx:if="{{answer}}">
+    <view class="card" wx:if="{{answer || loading}}">
       <view class="section-header answer-header">
         <view class="section-title">{{i18n.page.answerTitle}}</view>
         <view class="answer-tools" wx:if="{{answerStatus === 'awaiting_confirmation'}}">
@@ -169,6 +189,79 @@
       </view>
 
       <view class="muted answer-data" wx:if="{{answerDataText}}">{{answerDataText}}</view>
+    </view>
+
+    <view class="card graph-card assistant-graph-card">
+      <view class="section-header">
+        <view class="section-title">{{graphI18n.graphTitle}}</view>
+        <view class="section-meta">{{graphI18n.graphMeta}}</view>
+      </view>
+
+      <view class="graph-row">
+        <view class="{{assistantGraphNodes[0].className}}">
+          <view class="graph-node-title">{{assistantGraphNodes[0].title}}</view>
+          <view class="graph-node-desc">{{assistantGraphNodes[0].desc}}</view>
+        </view>
+        <view class="graph-center graph-center-arrow">
+          <view class="graph-arrow-line"></view>
+          <view class="graph-arrow-head"></view>
+        </view>
+        <view class="{{assistantGraphNodes[1].className}}">
+          <view class="graph-node-title">{{assistantGraphNodes[1].title}}</view>
+          <view class="graph-node-desc">{{assistantGraphNodes[1].desc}}</view>
+        </view>
+      </view>
+
+      <view class="graph-row graph-row-connector">
+        <view class="graph-spacer"></view>
+        <view class="graph-center">
+          <view class="graph-stem"></view>
+        </view>
+        <view class="graph-spacer"></view>
+      </view>
+
+      <view class="graph-row">
+        <view class="{{assistantGraphNodes[2].className}}">
+          <view class="graph-node-title">{{assistantGraphNodes[2].title}}</view>
+          <view class="graph-node-desc">{{assistantGraphNodes[2].desc}}</view>
+        </view>
+        <view class="graph-center graph-center-fork">
+          <view class="graph-fork-horizontal"></view>
+          <view class="graph-fork-vertical"></view>
+        </view>
+        <view class="{{assistantGraphNodes[3].className}}">
+          <view class="graph-node-title">{{assistantGraphNodes[3].title}}</view>
+          <view class="graph-node-desc">{{assistantGraphNodes[3].desc}}</view>
+        </view>
+      </view>
+
+      <view class="graph-row graph-row-connector">
+        <view class="graph-spacer"></view>
+        <view class="graph-center">
+          <view class="graph-stem"></view>
+        </view>
+        <view class="graph-spacer"></view>
+      </view>
+
+      <view class="graph-row">
+        <view class="{{assistantGraphNodes[4].className}}">
+          <view class="graph-node-title">{{assistantGraphNodes[4].title}}</view>
+          <view class="graph-node-desc">{{assistantGraphNodes[4].desc}}</view>
+        </view>
+        <view class="graph-center graph-center-arrow">
+          <view class="graph-arrow-line"></view>
+          <view class="graph-arrow-head"></view>
+        </view>
+        <view class="{{assistantGraphNodes[5].className}}">
+          <view class="graph-node-title">{{assistantGraphNodes[5].title}}</view>
+          <view class="graph-node-desc">{{assistantGraphNodes[5].desc}}</view>
+        </view>
+      </view>
+
+      <view class="graph-foot">
+        <view class="graph-pill">{{graphI18n.graphUndo}}</view>
+        <view class="graph-foot-text">{{graphI18n.graphUndoDesc}}</view>
+      </view>
     </view>
   </view>
 </view>

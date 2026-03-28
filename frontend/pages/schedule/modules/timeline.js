@@ -34,6 +34,8 @@ function formatScheduleRange(item, t) {
 function normalizeTimelineItem(item, t) {
   const occurDate = parseDate(item.occur_at);
   const isSchedule = item.kind === "schedule";
+  const locationText = `${item.location || ""}`.trim();
+  const noteText = `${item.note || item.description || ""}`.trim();
   const kindLabel = t(
     item.kind === "income"
       ? "page.kindIncome"
@@ -50,8 +52,10 @@ function normalizeTimelineItem(item, t) {
     titleText: isSchedule ? (item.title || t("page.unnamedSchedule")) : (item.category || kindLabel),
     kindLabel,
     creatorName: item.creator_name || t("common.teamMember"),
-    locationText: item.location || t("common.unset"),
-    noteText: item.note || item.description || t("common.noNote"),
+    locationText,
+    noteText,
+    hasLocation: !!locationText,
+    hasNote: !!noteText,
     subtitleText: isSchedule ? formatScheduleRange(item, t) : formatClock(occurDate),
     amountText,
     metaSecondaryText: isSchedule ? "" : (item.category || ""),
@@ -65,11 +69,12 @@ function normalizeTimelineItem(item, t) {
 function normalizeTimelineDay(day, items, t) {
   const date = parseDate(`${day.day_key}T00:00:00`);
   const isToday = day.day_key === formatDate(new Date());
+  const monthUnit = t("page.monthUnit");
   return {
     ...day,
     is_today: isToday,
     isToday,
-    monthText: `${date.getMonth() + 1}`,
+    monthText: `${date.getMonth() + 1}${monthUnit === "page.monthUnit" ? "" : monthUnit}`,
     dayText: `${date.getDate()}`,
     weekdayText: weekdayLabel(date, t),
     titleText: isToday ? `${t("page.todayLabel")} - ${day.day_key}` : day.day_key,

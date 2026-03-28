@@ -16,7 +16,7 @@ from app.core.config import get_settings
 from app.core.i18n import RELATIVE_DAY_TERMS, TERM_SETS, normalize_locale, translate
 from app.crud.finance import create_finance_record, list_finance_records
 from app.crud.schedule import create_schedule, list_schedules
-from app.crud.team import is_team_member
+from app.crud.team import can_read_team, can_write_team, is_team_member
 from app.models.finance import FinanceRecord
 from app.models.schedule import Schedule
 from app.services.assistant_session_service import (
@@ -75,6 +75,24 @@ _LANGGRAPH_FALLBACK_URLS = (
 _LANGGRAPH_UNDO_MESSAGE = "__assistant_undo_batch__"
 _LANGGRAPH_THREAD_NAMESPACE = uuid.UUID("2f6b44cd-9cf9-4027-9c73-bca142f2d128")
 _GRAPH_SESSION_FACTORIES: dict[str, sessionmaker] = {}
+_LANGGRAPH_STAGE_ORDER = (
+    "prepare",
+    "loop_queue",
+    "schedule_subgraph",
+    "expense_subgraph",
+    "collect_result",
+    "commit_batch",
+)
+_LANGGRAPH_STAGE_MAP = {
+    "prepare": "prepare",
+    "loop_guard": "loop_queue",
+    "dequeue_task": "loop_queue",
+    "route_subgraph": "loop_queue",
+    "schedule_subgraph": "schedule_subgraph",
+    "expense_subgraph": "expense_subgraph",
+    "collect_result": "collect_result",
+    "commit_batch": "commit_batch",
+}
 
 
 class AssistantGraphState(TypedDict, total=False):
@@ -175,7 +193,15 @@ def _resolve_langgraph_thread_id(session_id: str | None) -> str:
         return str(uuid.uuid5(_LANGGRAPH_THREAD_NAMESPACE, token))
 
 
-def _post_langgraph_json(path: str, payload: dict) -> dict:
+def _langgraph_request_headers() -> dict[str, str]:
+    headers = {"Accept": "application/json"}
+    api_key = _normalize_optional_text(get_settings().LANGSMITH_API_KEY)
+    if api_key:
+        headers["X-Api-Key"] = api_key
+    return headers
+
+
+def _request_langgraph_json(method: str, path: str, payload: dict | None = None) -> dict:
     global _LANGGRAPH_BASE_URL_CACHE
     settings = get_settings()
     timeout = max(float(settings.LANGGRAPH_REQUEST_TIMEOUT_SECONDS or 45), 5.0)
@@ -184,8 +210,9 @@ def _post_langgraph_json(path: str, payload: dict) -> dict:
     for index, base_url in enumerate(candidates):
         url = f"{base_url}{path}"
         try:
-            with httpx.Client(timeout=timeout) as client:
-                response = client.post(url, json=payload)
+            with httpx.Client(timeout=timeout, headers=_langgraph_request_headers()) as client:
+                request_kwargs = {"json": payload} if payload is not None else {}
+                response = client.request(method.upper(), url, **request_kwargs)
             response.raise_for_status()
             _LANGGRAPH_BASE_URL_CACHE = base_url
             if not response.content:
@@ -204,6 +231,14 @@ def _post_langgraph_json(path: str, payload: dict) -> dict:
                 continue
             raise last_error from exc
     raise RuntimeError(f"LangGraph API unavailable: {last_error}") from last_error
+
+
+def _post_langgraph_json(path: str, payload: dict) -> dict:
+    return _request_langgraph_json("POST", path, payload)
+
+
+def _get_langgraph_json(path: str) -> dict:
+    return _request_langgraph_json("GET", path)
 
 
 def _ensure_langgraph_thread(*, thread_id: str, team_id: uuid.UUID, user_id: uuid.UUID, locale: str) -> None:
@@ -231,6 +266,103 @@ def _extract_langgraph_response(payload: dict) -> dict:
         message = _normalize_optional_text(error.get("message")) or _normalize_optional_text(error.get("error")) or "unknown error"
         raise RuntimeError(f"LangGraph run failed: {message}")
     raise RuntimeError("LangGraph run output missing response payload")
+
+
+def _collect_langgraph_state_nodes(snapshot: object) -> list[str]:
+    collected: list[str] = []
+
+    def append_node(value: object) -> None:
+        text = _normalize_optional_text(value)
+        if text:
+            collected.append(text)
+
+    def walk(state: object) -> None:
+        if not isinstance(state, dict):
+            return
+        for item in state.get("next") or []:
+            append_node(item)
+        metadata = state.get("metadata")
+        if isinstance(metadata, dict):
+            writes = metadata.get("writes")
+            if isinstance(writes, dict):
+                for key in writes.keys():
+                    append_node(key)
+        tasks = state.get("tasks")
+        if isinstance(tasks, list):
+            for task in tasks:
+                if not isinstance(task, dict):
+                    continue
+                append_node(task.get("name"))
+                interrupts = task.get("interrupts")
+                if isinstance(interrupts, list):
+                    for interrupt in interrupts:
+                        if isinstance(interrupt, dict):
+                            append_node(interrupt.get("node"))
+                walk(task.get("state"))
+
+    walk(snapshot)
+    return collected
+
+
+def _map_langgraph_nodes_to_stages(node_names: list[str]) -> list[str]:
+    mapped: list[str] = []
+    for node_name in node_names:
+        stage = _LANGGRAPH_STAGE_MAP.get(node_name)
+        if stage and stage not in mapped:
+            mapped.append(stage)
+    return [stage for stage in _LANGGRAPH_STAGE_ORDER if stage in mapped]
+
+
+def _graph_stage_fallback_from_response(response: dict) -> list[str]:
+    status = _normalize_optional_text((response or {}).get("status")) or ""
+    if status == STATUS_EXECUTED:
+        return ["commit_batch"]
+    if status in {STATUS_COLLECTING, "blocked", "awaiting_confirmation"}:
+        return ["collect_result"]
+    return []
+
+
+def _build_langgraph_visual_state(*, thread_id: str, thread: dict | None, state: dict | None) -> dict:
+    thread_payload = thread if isinstance(thread, dict) else {}
+    state_payload = state if isinstance(state, dict) else {}
+    raw_nodes = _collect_langgraph_state_nodes(state_payload)
+    next_nodes = [item for item in state_payload.get("next") or [] if _normalize_optional_text(item)]
+    return {
+        "available": True,
+        "thread_id": thread_id,
+        "thread_status": _normalize_optional_text(thread_payload.get("status")) or "",
+        "highlighted_stages": _map_langgraph_nodes_to_stages(raw_nodes),
+        "next_nodes": next_nodes,
+        "updated_at": _normalize_optional_text(thread_payload.get("updated_at"))
+        or _normalize_optional_text(state_payload.get("created_at"))
+        or "",
+    }
+
+
+def _get_langgraph_visual_state(thread_id: str) -> dict:
+    thread = _get_langgraph_json(f"/threads/{thread_id}")
+    state = _get_langgraph_json(f"/threads/{thread_id}/state")
+    return _build_langgraph_visual_state(thread_id=thread_id, thread=thread, state=state)
+
+
+def _attach_langgraph_visual_state(response: dict, *, thread_id: str) -> dict:
+    try:
+        graph_state = _get_langgraph_visual_state(thread_id)
+    except Exception:
+        graph_state = {
+            "available": False,
+            "thread_id": thread_id,
+            "thread_status": "",
+            "highlighted_stages": [],
+            "next_nodes": [],
+            "updated_at": "",
+        }
+    if not graph_state.get("highlighted_stages"):
+        graph_state["highlighted_stages"] = _graph_stage_fallback_from_response(response)
+    data = dict(response.get("data") or {})
+    data["graph_state"] = graph_state
+    response["data"] = data
+    return response
 
 
 def _normalize_text(text: str) -> str:
@@ -440,69 +572,28 @@ def _term_set_preview(name: str) -> str:
     return ", ".join(items[:PLANNER_KEYWORD_PREVIEW_LIMIT])
 
 
-def _planner_skill_catalog() -> str:
-    skills = [
-        (
-            INTENT_CREATE_SCHEDULE,
-            "Create schedule",
-            "Create a schedule/event/calendar item.",
-            "title, start_time, end_time",
-            "is_all_day, location, description",
-            ("schedule_hints", "schedule_create_hints"),
-        ),
-        (
-            INTENT_QUERY_SCHEDULE,
-            "Query schedule",
-            "Query existing schedules or agenda items.",
-            "none",
-            "window_start, window_end, label",
-            ("query_hints", "schedule_hints", "schedule_query_hints"),
-        ),
-        (
-            INTENT_CREATE_FINANCE,
-            "Create expense or income",
-            "Create an expense/income record.",
-            "amount, type, category",
-            "occurred_at, location, note",
-            ("create_hints", "finance_hints", "expense_hints", "income_hints"),
-        ),
-        (
-            INTENT_QUERY_FINANCE,
-            "Query finance",
-            "Query existing finance records or summaries.",
-            "question",
-            "window_start, window_end",
-            ("query_hints", "finance_hints", "food_terms", "last_month_terms"),
-        ),
-    ]
-    lines: list[str] = []
-    for index, (intent, title, purpose, required, optional, term_keys) in enumerate(skills, start=1):
-        keyword_parts = [f"{key}: [{_term_set_preview(key)}]" for key in term_keys]
-        lines.extend(
-            [
-                f"{index}. {title} ({intent})",
-                f"- purpose: {purpose}",
-                f"- required params: {required}",
-                f"- optional params: {optional}",
-                f"- keyword hints from i18n: {'; '.join(keyword_parts)}",
-            ]
-        )
-    return "\n".join(lines)
+def _planner_examples() -> str:
+    return "\n".join(
+        [
+            'Q: "本月花了多少钱" -> {"steps":[{"intent":"query_finance"}],"need_split":false}',
+            'Q: "明天有什么安排" -> {"steps":[{"intent":"query_schedule"}],"need_split":false}',
+            'Q: "记一笔排练室费用 300" -> {"steps":[{"intent":"create_finance"}],"need_split":false}',
+            'Q: "明晚八点排练" -> {"steps":[{"intent":"create_schedule"}],"need_split":false}',
+            'Q: "你好" -> {"steps":[],"need_split":false}',
+        ]
+    )
 
 
 def _planner_history_preview(history: list[dict] | None) -> str:
     items = _trim_conversation_history(history)
     if not items:
-        return "No prior conversation context."
+        return "none"
     lines: list[str] = []
     for index, item in enumerate(items, start=1):
         user_text = _normalize_text(item.get("user") or "")
-        assistant_text = _normalize_text(item.get("assistant") or "")
         intent = _normalize_optional_text(item.get("intent")) or "unknown"
         status = _normalize_optional_text(item.get("status")) or "unknown"
-        lines.append(
-            f"{index}. user={user_text or '[empty]'} | assistant={assistant_text or '[empty]'} | intent={intent} | status={status}"
-        )
+        lines.append(f"{index}. u={user_text or '[empty]'} | i={intent} | s={status}")
     return "\n".join(lines)
 
 
@@ -518,14 +609,13 @@ def _llm_render_readable_reply(*, locale: str, results: list[dict], fallback_rep
         "ja-JP": "Japanese",
     }.get(normalize_locale(locale), "Simplified Chinese")
     system = (
-        "You are a response renderer for a schedule and expense assistant.\n"
-        "Always reason in English.\n"
-        f"Return final user-facing reply in {language_hint}.\n"
-        "Do not invent facts. Only summarize the provided operation results.\n"
-        "Keep it concise and clear.\n"
-        'Return strict JSON only: {"reply":"..."}'
+        "You rewrite tool results into a user reply.\n"
+        f"Reply language: {language_hint}.\n"
+        "Use only provided facts.\n"
+        "Be concise. No markdown. No extra keys.\n"
+        'Return JSON only: {"reply":"..."}'
     )
-    user = f"operation_results={results}\nfallback_reply={fallback_reply}"
+    user = f"results={results}\nfallback={fallback_reply}"
     try:
         data = client.chat_json(system=system, user=user) or {}
     except Exception:
@@ -610,6 +700,14 @@ def _with_default_schedule_end(slots: dict) -> dict:
 def _extract_schedule_query_range(message: str, locale: str) -> tuple[dt.datetime | None, dt.datetime | None, str]:
     text = _normalize_text(message)
     now = _local_now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if _contains_any(text, TERM_SETS["this_month_terms"]):
+        next_month = (month_start + dt.timedelta(days=32)).replace(day=1)
+        return month_start, next_month, translate(locale, "assistant.query_label_this_month")
+    if _contains_any(text, TERM_SETS["last_month_terms"]):
+        last_month_end = month_start
+        last_month_start = (month_start - dt.timedelta(days=1)).replace(day=1)
+        return last_month_start, last_month_end, translate(locale, "assistant.query_label_last_month")
     if _contains_any(text, RELATIVE_DAY_TERMS["today"]):
         start, end = _day_range(now)
         return start, end, translate(locale, "assistant.query_label_today")
@@ -725,31 +823,25 @@ def _plan_intents(message: str, *, history: list[dict] | None = None) -> tuple[l
 
     sysdate = _local_now().strftime("%Y-%m-%d %H:%M:%S %z")
     system = (
-        "You are a schedule and finance assistant planner. Light small talk is allowed.\n"
-        "Always reason and classify in English, independent from the user's language.\n"
-        f"Current datetime is {sysdate}.\n"
-        "You have exactly 4 skills. Their purposes and parameters are:\n"
-        f"{_planner_skill_catalog()}\n"
-        "Planning rules:\n"
-        "- Semantic understanding has higher priority than keyword hits.\n"
-        "- Keyword hints come from i18n term sets and are only hints, not hard rules.\n"
-        "- A single message may contain multiple intents; return ordered steps.\n"
-        f"- Maximum {MAX_PLAN_STEPS} steps. If more than {MAX_PLAN_STEPS} are required, set need_split=true.\n"
-        "- Time/activity statements are schedule intents, not finance intents.\n"
-        "- Do not emit finance intents for activity/location plans unless actual payment/income semantics are present.\n"
-        "- Examples like 'I will go rehearse this afternoon' and 'I will go eat at Guishan this afternoon' are schedules.\n"
-        "- query_* only when user asks to check existing data.\n"
-        "- create_* only when user asks to add/create/record data.\n"
-        "- If message is only small talk, return unsupported (empty steps).\n"
-        "Return strict JSON only with keys: steps, need_split, reason."
+        "You are a classifier for a team assistant.\n"
+        f"Now={sysdate}\n"
+        "Choose only from: create_finance, query_finance, create_schedule, query_schedule.\n"
+        "Return ordered steps only. Max 5 steps.\n"
+        "query_* means asking about existing data.\n"
+        "create_* means asking to record or update data.\n"
+        "Schedule/activity/rehearsal/meeting/performance/time/place => schedule.\n"
+        "Money/income/expense/reimbursement/budget/profit => finance.\n"
+        "If the message is just greeting/small talk, return steps=[].\n"
+        "If it truly needs more than 5 actions, set need_split=true.\n"
+        f"Examples:\n{_planner_examples()}\n"
+        'JSON schema: {"steps":[{"intent":"create_finance|query_finance|create_schedule|query_schedule"}],"need_split":false}'
     )
     user = (
-        f"Conversation context:\n{_planner_history_preview(history)}\n\n"
-        f"User message: {text}\n"
-        'Return JSON: {"steps":[{"intent":"create_finance|query_finance|create_schedule|query_schedule"}],"need_split":false,"reason":"..."}'
+        f"history:\n{_planner_history_preview(history)}\n"
+        f"message:\n{text}"
     )
     try:
-        data = client.chat_json(system=system, user=user) or {}
+        data = client.chat_json(system=system, user=user, max_tokens=120, allow_auto_switch=False) or {}
     except Exception:
         return (fallback or [INTENT_UNSUPPORTED], False)
 
@@ -822,10 +914,11 @@ def _extract_slots_for_intent(intent: str, message: str, locale: str, current_sl
     elif intent == INTENT_QUERY_FINANCE:
         text = _normalize_text(message)
         base = {"question": text} if text else {}
-        start, end, _ = _extract_schedule_query_range(message, locale)
+        start, end, label = _extract_schedule_query_range(message, locale)
         if start is not None and end is not None:
             base["window_start"] = start
             base["window_end"] = end
+            base["label"] = label
 
     # Slot extraction is deterministic by design; only prepare uses LLM for intent planning.
     return dict(base)
@@ -971,6 +1064,26 @@ def _find_next_incomplete_step(steps: list[dict], start_index: int = 0) -> tuple
 
 def _has_mutating_step(steps: list[dict]) -> bool:
     return any(step.get("intent") in MUTATING_INTENTS for step in steps)
+
+
+def message_requires_write_access(
+    db: Session,
+    *,
+    team_id: uuid.UUID,
+    user_id: uuid.UUID,
+    message: str,
+    locale: str,
+) -> bool:
+    if not can_read_team(db, team_id=team_id, user_id=user_id):
+        return False
+    if can_write_team(db, team_id=team_id, user_id=user_id):
+        return False
+    if message == _LANGGRAPH_UNDO_MESSAGE:
+        return True
+    planned_steps, response = _plan_graph_steps(message, locale=normalize_locale(locale))
+    if response is not None or not planned_steps:
+        return False
+    return _has_mutating_step(planned_steps)
 
 
 def _query_schedule(
@@ -1973,7 +2086,7 @@ def _execute_assistant_langgraph(
         session_mode = _normalize_optional_text(response["data"].get("session_mode"))
     if not response.get("session_id") and (response.get("status") == STATUS_COLLECTING or session_mode == SESSION_MODE_CONVERSATION):
         response["session_id"] = thread_id
-    return response
+    return _attach_langgraph_visual_state(response, thread_id=thread_id)
 
 
 def _execute_assistant_legacy(

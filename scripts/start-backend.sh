@@ -85,15 +85,58 @@ validate_backend_security_config() {
   echo "Backend security preflight: production config OK"
 }
 
+read_demo_seed_mode() {
+  local configured
+  configured="$(read_env_value DEMO_SEED_MODE '')"
+  configured="${configured,,}"
+  if [[ -n "${configured}" ]]; then
+    printf '%s' "${configured}"
+    return
+  fi
+  printf '%s' "auto"
+}
+
+get_api_container_name() {
+  local container_id
+  container_id="$(docker compose ps -q api 2>/dev/null | head -n 1 || true)"
+  if [[ -z "${container_id}" ]]; then
+    return
+  fi
+  docker inspect --format '{{.Name}}' "${container_id}" 2>/dev/null | sed 's#^/##'
+}
+
+run_in_api_container() {
+  local command="$1"
+  local container_name
+  container_name="$(get_api_container_name)"
+  if [[ -n "${container_name}" ]]; then
+    docker exec "${container_name}" sh -lc "${command}"
+    return
+  fi
+  docker compose run --rm api sh -lc "${command}"
+}
+
+run_demo_seed_if_auto() {
+  if [[ "$(read_demo_seed_mode)" != "auto" ]]; then
+    echo "Demo seed step: skipped"
+    return
+  fi
+  run_in_api_container "DEMO_SEED_MODE=manual python -m app.commands.seed_demo_data"
+}
+
 cd "${ROOT_DIR}"
 validate_backend_security_config
 docker compose up -d db
 docker compose build api langgraph
-docker compose run --rm api alembic upgrade head
+docker compose up -d api langgraph
+run_in_api_container "alembic upgrade head"
+run_demo_seed_if_auto
 docker compose up -d --force-recreate api langgraph
 docker compose ps api langgraph db
-docker compose run --rm api alembic current && echo "Database migrations: current" || echo "Database migrations: FAILED"
+run_in_api_container "alembic current" && echo "Database migrations: current" || echo "Database migrations: FAILED"
+echo "Demo seed mode: $(read_demo_seed_mode)"
 curl -sS http://127.0.0.1:8000/openapi.json >/dev/null && echo "API health: OK" || echo "API health: FAILED"
 curl -sS http://127.0.0.1:8000/openapi.json | grep -q '"/timeline"' && echo "Timeline route: OK" || echo "Timeline route: MISSING"
+curl -sS http://127.0.0.1:8000/openapi.json | grep -q '"/teams"' && echo "Team bootstrap route: OK" || echo "Team bootstrap route: MISSING"
 curl -sS http://127.0.0.1:22024/docs >/dev/null && echo "LangGraph health: OK" || echo "LangGraph health: FAILED"
 docker compose logs --tail=120 api langgraph

@@ -52,6 +52,16 @@
   color: rgba(255, 255, 255, 0.82);
 }
 
+.analysis-readonly-banner {
+  margin-top: 18rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 18rpx;
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
 .summary-grid {
   margin-top: 24rpx;
   display: flex;

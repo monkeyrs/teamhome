@@ -2,7 +2,7 @@ import uuid
 
 import datetime as dt
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,12 +14,14 @@ class Team(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String, index=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     join_password: Mapped[str | None] = mapped_column(String(4), nullable=True)
     owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     owner = relationship("User", back_populates="teams_owned")
     members = relationship("TeamMember", back_populates="team", cascade="all,delete-orphan")
+    hidden_by_users = relationship("DemoTeamHide", back_populates="team", cascade="all,delete-orphan")
     schedules = relationship("Schedule", back_populates="team", cascade="all,delete-orphan")
     finance_records = relationship("FinanceRecord", back_populates="team", cascade="all,delete-orphan")
 
@@ -35,3 +37,15 @@ class TeamMember(Base):
 
     team = relationship("Team", back_populates="members")
     user = relationship("User")
+
+
+class DemoTeamHide(Base):
+    __tablename__ = "demo_team_hides"
+    __table_args__ = (UniqueConstraint("team_id", "user_id", name="uq_demo_team_hide"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    team_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("teams.id"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    team = relationship("Team", back_populates="hidden_by_users")

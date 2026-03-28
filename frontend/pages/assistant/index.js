@@ -1,13 +1,16 @@
 const { setCurrentTeamId, setCurrentUser } = require("../../utils/request");
 const { bootstrapSession } = require("../../utils/bootstrap");
-const { applyPageLocale, setLocale } = require("../../utils/i18n");
+const { applyPageLocale, getLocale, getMessages, setLocale } = require("../../utils/i18n");
 const { markDataDirty } = require("../../utils/data-sync");
+const { triggerFeedback } = require("../../utils/feedback");
 const assistantApi = require("./modules/api");
 const { resolveTeamIndex, resolveCurrentTeam, syncTeamsToApp } = require("./modules/team-state");
 const {
   createInitialData,
+  createEmptyAssistantGraphState,
   translate,
   formatAnswerStatus: mapAnswerStatusText,
+  buildAssistantGraphNodes,
   quickReplyText,
   mapAssistantResponse
 } = require("./modules/view-state");
@@ -43,9 +46,15 @@ function decorateTeams(teams, visibilityMap, t) {
   return (teams || []).map((item) => {
     const passwordVisible = !!visibilityMap[item.id];
     const hasPassword = !!item.join_password;
+    const isDemo = !!item.is_demo;
     return {
       ...item,
+      isDemo,
+      isReadonly: !!item.is_readonly,
       passwordVisible,
+      metaText: isDemo
+        ? `${t("page.teamDemoBadge")} · ${item.member_count}${t("page.teamMemberUnit")} · ${t("page.teamReadonlyBadge")}`
+        : `${item.member_count}/30`,
       passwordButtonText: hasPassword
         ? (passwordVisible ? item.join_password : t("page.teamPasswordToggle"))
         : ""
@@ -55,6 +64,25 @@ function decorateTeams(teams, visibilityMap, t) {
 
 function resetTeamPasswordVisibility(teams, t) {
   return decorateTeams(teams, {}, t);
+}
+
+function buildDemoEntryOptions(t) {
+  return [
+    {
+      key: "badz",
+      teamName: "Badz乐队",
+      displayName: t("page.demoTeamBadz")
+    },
+    {
+      key: "teamhome",
+      teamName: "teamhome开发",
+      displayName: t("page.demoTeamLog")
+    }
+  ];
+}
+
+function isKnownDemoTeamName(name) {
+  return name === "Badz乐队" || name === "teamhome开发";
 }
 
 function buildPasswordCells(password) {
@@ -85,6 +113,55 @@ function syncDirtyScopesFromAssistant(teamId, response) {
 Page({
   data: createInitialData(),
 
+  getProcessingText() {
+    const locale = this.data.locale || getLocale();
+    const messages = getMessages(locale);
+    return (((messages || {}).assistant || {}).processingText) || "处理中";
+  },
+
+  getProcessingTickDelay() {
+    return 1000 + Math.floor(Math.random() * 2001);
+  },
+
+  scheduleProcessingTick() {
+    this._processingTimer = setTimeout(() => {
+      const nextDots = ((this.data.processingDots || 0) % 6) + 1;
+      this.setData({
+        processingDots: nextDots,
+        answer: `${this.getProcessingText()}${".".repeat(nextDots)}`
+      });
+      triggerFeedback(this, { hapticKey: "assistant-processing-dot" });
+      this.scheduleProcessingTick();
+    }, this.getProcessingTickDelay());
+  },
+
+  startProcessingIndicator() {
+    const emptyGraphState = createEmptyAssistantGraphState();
+    this.stopProcessingIndicator();
+    this.setData({
+      answer: this.getProcessingText(),
+      processingDots: 0,
+      answerDataText: "",
+      answerStatus: "",
+      answerStatusLabel: "",
+      answerCanUndo: false,
+      assistantReturnedSessionId: "",
+      assistantMissingSlots: [],
+      firstMissingSlot: "",
+      assistantGraphState: emptyGraphState,
+      assistantGraphNodes: buildAssistantGraphNodes(emptyGraphState, this.data.graphI18n || {})
+    });
+
+    this.scheduleProcessingTick();
+  },
+
+  stopProcessingIndicator() {
+    if (this._processingTimer) {
+      clearTimeout(this._processingTimer);
+      this._processingTimer = null;
+    }
+  },
+
   ensureRequestTracking() {
     if (!this._ignoredRequestTokens) {
       this._ignoredRequestTokens = new Set();
@@ -96,12 +173,28 @@ Page({
     await this.initPage();
   },
 
+  onHide() {
+    this.stopProcessingIndicator();
+  },
+
+  onUnload() {
+    this.stopProcessingIndicator();
+  },
+
   applyLocale() {
+    const locale = getLocale();
+    const messages = getMessages(locale);
     applyPageLocale(this, "assistant");
     const visibilityMap = getTeamPasswordVisibilityMap(this.data.teams);
     this.setData({
+      graphI18n: messages.analysis || {},
       teams: decorateTeams(this.data.teams, visibilityMap, (path) => this.t(path)),
-      answerStatusLabel: this.formatAnswerStatus(this.data.answerStatus)
+      demoEntryOptions: buildDemoEntryOptions((path) => this.t(path)),
+      answerStatusLabel: this.formatAnswerStatus(this.data.answerStatus),
+      assistantGraphNodes: buildAssistantGraphNodes(this.data.assistantGraphState, messages.analysis || {}),
+      answer: this.data.loading
+        ? `${this.getProcessingText()}${".".repeat(this.data.processingDots || 0)}`
+        : this.data.answer
     });
   },
 
@@ -126,15 +219,19 @@ Page({
   async initPage() {
     this.setData({ loading: true });
     try {
-      const { teamId, teams, user } = await bootstrapSession();
+      const { teamId, teams, user, realTeams, demoTeams, capabilities } = await bootstrapSession();
       const teamIndex = resolveTeamIndex(teams, teamId);
       const visibilityMap = getTeamPasswordVisibilityMap(this.data.teams);
       this.setData({
         ...buildProfileState(user),
         canUseNicknameInput: wx.canIUse("input.type.nickname"),
         teams: decorateTeams(teams, visibilityMap, (path) => this.t(path)),
+        realTeams: realTeams || [],
+        demoTeams: demoTeams || [],
+        demoEntryOptions: buildDemoEntryOptions((path) => this.t(path)),
         teamIndex: teamIndex < 0 ? 0 : teamIndex,
-        teamPanelOpen: teams.length === 0
+        teamPanelOpen: !!(capabilities && capabilities.shouldPromptTeamEntry),
+        teamInputFocused: false
       });
     } catch (err) {
       wx.showToast({ title: this.t("common.initFailed"), icon: "none" });
@@ -145,6 +242,10 @@ Page({
 
   currentTeam() {
     return resolveCurrentTeam(this.data.teams, this.data.teamIndex);
+  },
+
+  showReadonlyTip() {
+    wx.showToast({ title: this.t("page.readonlyTip"), icon: "none" });
   },
 
   toggleTeamPanel() {
@@ -187,6 +288,7 @@ Page({
       teamIndex: index,
       teamPanelOpen: false,
       answer: "",
+      processingDots: 0,
       answerDataText: "",
       answerStatus: "",
       answerStatusLabel: "",
@@ -195,13 +297,65 @@ Page({
       assistantMutationSessionId: "",
       assistantReturnedSessionId: "",
       assistantMissingSlots: [],
-      firstMissingSlot: ""
+      firstMissingSlot: "",
+      assistantGraphState: createEmptyAssistantGraphState(),
+      assistantGraphNodes: buildAssistantGraphNodes(createEmptyAssistantGraphState(), this.data.graphI18n || {})
     });
     setCurrentTeamId(selected.id);
   },
 
   onTeamNameInput(event) {
-    this.setData({ teamName: event.detail.value });
+    this.setData({ teamName: event.detail.value, teamInputFocused: true });
+  },
+
+  onTeamNameFocus() {
+    this.setData({ teamInputFocused: true });
+  },
+
+  onTeamNameBlur() {
+    setTimeout(() => {
+      this.setData({ teamInputFocused: false });
+    }, 120);
+  },
+
+  async openDemoTeamFromEntry(event) {
+    const teamName = String(event.currentTarget.dataset.teamName || "").trim();
+    if (!teamName || this.data.teamActionLoading) return;
+    this.setData({
+      teamName,
+      teamInputFocused: false
+    });
+    await this.openDemoTeam(teamName);
+  },
+
+  async openDemoTeam(teamName) {
+    const name = String(teamName || "").trim();
+    if (!name) return;
+
+    this.setData({ teamActionLoading: true });
+    try {
+      const discovery = await assistantApi.discoverTeam(name);
+      if (!discovery.exists || !discovery.is_demo) {
+        wx.showToast({ title: this.t("page.demoTeamUnavailable"), icon: "none" });
+        return;
+      }
+
+      const team = await assistantApi.createTeam({ name });
+      const teams = await this.refreshTeams();
+      const joinedIndex = teams.findIndex((item) => item.id === team.id);
+      this.setData({
+        teamName: "",
+        teams: resetTeamPasswordVisibility(teams, (path) => this.t(path)),
+        teamIndex: joinedIndex < 0 ? this.data.teamIndex : joinedIndex,
+        teamPanelOpen: false,
+        teamInputFocused: false
+      });
+      setCurrentTeamId(team.id);
+    } catch (err) {
+      wx.showToast({ title: this.t("page.demoTeamUnavailable"), icon: "none" });
+    } finally {
+      this.setData({ teamActionLoading: false });
+    }
   },
 
   onQuestionInput(event) {
@@ -240,8 +394,12 @@ Page({
     const teams = await assistantApi.listTeams();
     const teamIndex = syncTeamsToApp(teams);
     const visibilityMap = getTeamPasswordVisibilityMap(this.data.teams);
+    const realTeams = (teams || []).filter((item) => !item.is_demo);
+    const demoTeams = (teams || []).filter((item) => !!item.is_demo);
     this.setData({
       teams: decorateTeams(teams, visibilityMap, (path) => this.t(path)),
+      realTeams,
+      demoTeams,
       teamIndex: teamIndex < 0 ? 0 : teamIndex
     });
     return teams;
@@ -298,10 +456,16 @@ Page({
     });
   },
 
-  async createOrJoinTeam() {
-    const name = (this.data.teamName || "").trim();
+  async createOrJoinTeam(prefilledName) {
+    const rawName = typeof prefilledName === "string" ? prefilledName : (this.data.teamName || "");
+    const name = String(rawName).trim();
     if (!name) {
       wx.showToast({ title: this.t("page.teamNameRequired"), icon: "none" });
+      return;
+    }
+
+    if (isKnownDemoTeamName(name)) {
+      await this.openDemoTeam(name);
       return;
     }
 
@@ -312,7 +476,7 @@ Page({
         const teams = await this.refreshTeams();
         const joinedIndex = teams.findIndex((item) => item.name === name);
         if (joinedIndex >= 0) {
-          this.setData({ teamIndex: joinedIndex, teamPanelOpen: false });
+          this.setData({ teamIndex: joinedIndex, teamPanelOpen: false, teamInputFocused: false });
           setCurrentTeamId(teams[joinedIndex].id);
         }
         wx.showToast({ title: this.t("page.teamAlreadyJoined"), icon: "none" });
@@ -330,7 +494,8 @@ Page({
           teamName: "",
           teams: resetTeamPasswordVisibility(teams, (path) => this.t(path)),
           teamIndex: joinedIndex < 0 ? this.data.teamIndex : joinedIndex,
-          teamPanelOpen: false
+          teamPanelOpen: false,
+          teamInputFocused: false
         });
         setCurrentTeamId(team.id);
         wx.showToast({ title: this.t("page.teamJoinSuccess"), icon: "success" });
@@ -372,6 +537,7 @@ Page({
         teams: resetTeamPasswordVisibility(teams, (path) => this.t(path)),
         teamIndex: teamIndex < 0 ? this.data.teamIndex : teamIndex,
         teamPanelOpen: false,
+        teamInputFocused: false,
         teamDialogOpen: false,
         teamDialogMode: "",
         teamDialogName: "",
@@ -401,9 +567,10 @@ Page({
   confirmLeaveTeam(event) {
     const teamId = event.currentTarget.dataset.teamId;
     const teamName = event.currentTarget.dataset.teamName;
+    const isDemo = event.currentTarget.dataset.isDemo === true || event.currentTarget.dataset.isDemo === "true";
     wx.showModal({
-      title: this.t("page.leaveTeamTitle"),
-      content: this.t("page.leaveTeamContent", { teamName }),
+      title: this.t(isDemo ? "page.leaveDemoTitle" : "page.leaveTeamTitle"),
+      content: this.t(isDemo ? "page.leaveDemoContent" : "page.leaveTeamContent", { teamName }),
       success: async (res) => {
         if (!res.confirm) return;
         try {
@@ -422,10 +589,15 @@ Page({
     this.ensureRequestTracking();
     if (!this._activeRequestToken) return;
     this._ignoredRequestTokens.add(this._activeRequestToken);
+    this.stopProcessingIndicator();
     this.setData({
+      loading: false,
       assistantConversationSessionId: "",
       assistantMutationSessionId: "",
-      assistantReturnedSessionId: ""
+      assistantReturnedSessionId: "",
+      processingDots: 0,
+      assistantGraphState: createEmptyAssistantGraphState(),
+      assistantGraphNodes: buildAssistantGraphNodes(createEmptyAssistantGraphState(), this.data.graphI18n || {})
     });
   },
 
@@ -453,6 +625,7 @@ Page({
     const requestToken = createRequestToken();
     this._activeRequestToken = requestToken;
     this.setData({ loading: true });
+    this.startProcessingIndicator();
 
     try {
       const data = await assistantApi.executeAssistant({
@@ -469,6 +642,8 @@ Page({
         clearQuestion: true,
         formatStatus: (status) => this.formatAnswerStatus(status)
       });
+      mapped.processingDots = 0;
+      mapped.assistantGraphNodes = buildAssistantGraphNodes(mapped.assistantGraphState, this.data.graphI18n || {});
       const responseIntent = data && data.intent;
       const responseSessionId = (data && data.session_id) || "";
       const responseMode = data && data.data && data.data.session_mode;
@@ -485,8 +660,14 @@ Page({
       if (this._ignoredRequestTokens.has(requestToken)) {
         return;
       }
+      const detail = err && err.responseData && err.responseData.detail;
+      if (detail === "TEAM_READ_ONLY") {
+        this.showReadonlyTip();
+        return;
+      }
       wx.showToast({ title: this.t("common.sendFailed"), icon: "none" });
     } finally {
+      this.stopProcessingIndicator();
       this._ignoredRequestTokens.delete(requestToken);
       if (this._activeRequestToken === requestToken) {
         this._activeRequestToken = "";
@@ -518,10 +699,17 @@ Page({
         clearQuestion: false,
         formatStatus: (status) => this.formatAnswerStatus(status)
       });
+      mapped.processingDots = 0;
+      mapped.assistantGraphNodes = buildAssistantGraphNodes(mapped.assistantGraphState, this.data.graphI18n || {});
       mapped.assistantMutationSessionId = "";
       mapped.assistantConversationSessionId = "";
       this.setData(mapped);
     } catch (err) {
+      const detail = err && err.responseData && err.responseData.detail;
+      if (detail === "TEAM_READ_ONLY") {
+        this.showReadonlyTip();
+        return;
+      }
       wx.showToast({ title: this.t("common.sendFailed"), icon: "none" });
     } finally {
       this.setData({ loading: false });

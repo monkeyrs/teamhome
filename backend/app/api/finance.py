@@ -17,7 +17,7 @@ from app.crud.finance import (
     update_finance_record,
 )
 from app.crud.place import touch_place
-from app.crud.team import is_team_member
+from app.crud.team import can_read_team, can_write_team
 from app.schemas.finance import (
     FinanceAssistantIn,
     FinanceAssistantOut,
@@ -73,7 +73,7 @@ def list_finance_route(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> list[FinanceOut]:
-    if not is_team_member(db, team_id=team_id, user_id=current_user.id):
+    if not can_read_team(db, team_id=team_id, user_id=current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a team member")
     if window_start and window_end and window_start > window_end:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="window_start must be <= window_end")
@@ -87,8 +87,10 @@ def create_finance_route(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> FinanceOut:
-    if not is_team_member(db, team_id=payload.team_id, user_id=current_user.id):
+    if not can_read_team(db, team_id=payload.team_id, user_id=current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a team member")
+    if not can_write_team(db, team_id=payload.team_id, user_id=current_user.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="TEAM_READ_ONLY")
     record = create_finance_record(
         db,
         team_id=payload.team_id,
@@ -112,7 +114,7 @@ def list_finance_categories_route(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> list[str]:
-    if not is_team_member(db, team_id=team_id, user_id=current_user.id):
+    if not can_read_team(db, team_id=team_id, user_id=current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a team member")
     return list_popular_categories(db, team_id=team_id, limit=5)
 
@@ -129,7 +131,7 @@ def finance_assistant(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> FinanceAssistantOut:
-    if not is_team_member(db, team_id=payload.team_id, user_id=current_user.id):
+    if not can_read_team(db, team_id=payload.team_id, user_id=current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a team member")
     result = answer_finance_question(
         db,
@@ -149,8 +151,10 @@ def delete_finance_route(
     record = get_finance_record(db, record_id=record_id)
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finance record not found")
-    if not is_team_member(db, team_id=record.team_id, user_id=current_user.id):
+    if not can_read_team(db, team_id=record.team_id, user_id=current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a team member")
+    if not can_write_team(db, team_id=record.team_id, user_id=current_user.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="TEAM_READ_ONLY")
     batch = create_change_batch(db, team_id=record.team_id, user_id=current_user.id, action="delete", entity_type="finance")
     soft_delete_finance_record(db, record=record, batch_id=batch.id)
     prune_old_batches(db, team_id=record.team_id, user_id=current_user.id, keep=3)
@@ -166,8 +170,10 @@ def update_finance_route(
     record = get_finance_record(db, record_id=record_id)
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Finance record not found")
-    if not is_team_member(db, team_id=record.team_id, user_id=current_user.id):
+    if not can_read_team(db, team_id=record.team_id, user_id=current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a team member")
+    if not can_write_team(db, team_id=record.team_id, user_id=current_user.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="TEAM_READ_ONLY")
     record = update_finance_record(
         db,
         record=record,

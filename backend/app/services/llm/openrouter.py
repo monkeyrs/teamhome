@@ -158,6 +158,8 @@ class OpenAICompatibleClient:
         system: str,
         user: str,
         model: str | None = None,
+        max_tokens: int | None = None,
+        allow_auto_switch: bool = True,
     ) -> dict[str, Any] | None:
         try:
             result = self.chat(
@@ -167,6 +169,8 @@ class OpenAICompatibleClient:
                     {"role": "user", "content": user},
                 ],
                 temperature=0,
+                max_tokens=max_tokens,
+                allow_auto_switch=allow_auto_switch,
             )
         except httpx.HTTPStatusError as exc:
             raw_error = exc.response.text.lower()
@@ -181,6 +185,8 @@ class OpenAICompatibleClient:
                     }
                 ],
                 temperature=0,
+                max_tokens=max_tokens,
+                allow_auto_switch=allow_auto_switch,
             )
         content = result.text
         try:

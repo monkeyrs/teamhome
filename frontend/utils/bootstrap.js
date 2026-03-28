@@ -50,17 +50,39 @@ async function ensureTeam() {
     }
   }
   app.globalData.teams = teams || [];
+  const realTeams = app.globalData.teams.filter((item) => !item.is_demo);
+  const demoTeams = app.globalData.teams.filter((item) => !!item.is_demo);
   if (app.globalData.teams.length === 0) {
     setCurrentTeamId("");
-    return { teamId: "", teams: [] };
+    return {
+      teamId: "",
+      teams: [],
+      realTeams,
+      demoTeams,
+      currentEntry: null,
+      capabilities: {
+        hasRealTeams: false,
+        hasDemoTeams: false,
+        shouldPromptTeamEntry: true
+      }
+    };
   }
 
   const validCurrent = app.globalData.teams.find((item) => item.id === app.globalData.currentTeamId);
-  const teamId = validCurrent ? validCurrent.id : app.globalData.teams[0].id;
+  const preferredTeam = validCurrent || realTeams[0] || demoTeams[0] || app.globalData.teams[0];
+  const teamId = preferredTeam ? preferredTeam.id : "";
   setCurrentTeamId(teamId);
   return {
     teamId,
     teams: app.globalData.teams,
+    realTeams,
+    demoTeams,
+    currentEntry: preferredTeam || null,
+    capabilities: {
+      hasRealTeams: realTeams.length > 0,
+      hasDemoTeams: demoTeams.length > 0,
+      shouldPromptTeamEntry: realTeams.length === 0
+    },
     user: app.globalData.user || null
   };
 }

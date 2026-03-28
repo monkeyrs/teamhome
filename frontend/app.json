@@ -2,7 +2,6 @@
   "pages": [
     "pages/assistant/index",
     "pages/schedule/index",
-    "pages/finance/index",
     "pages/analysis/index"
   ],
   "window": {

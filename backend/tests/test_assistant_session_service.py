@@ -1,3 +1,4 @@
+import datetime as dt
 import unittest
 from unittest.mock import patch
 
@@ -58,6 +59,38 @@ class AssistantSessionServiceTests(unittest.TestCase):
             session_id="session-2",
             state=captured_state,
         )
+
+    def test_save_session_serializes_datetime_and_get_restores_it(self):
+        db = object()
+        timestamp = dt.datetime(2026, 3, 29, 12, 34, 56, tzinfo=dt.timezone.utc)
+        state = {"slots": {"start_time": timestamp}}
+
+        with (
+            patch.object(assistant_session_service, "SessionLocal", return_value=_SessionContext(db)),
+            patch.object(assistant_session_service, "create_or_replace_assistant_session") as create_mock,
+        ):
+            assistant_session_service.save_session("session-3", state)
+            captured_state = create_mock.call_args.kwargs["state"]
+
+        self.assertEqual(
+            captured_state["slots"]["start_time"],
+            {
+                "__teamhome_type__": "datetime",
+                "value": timestamp.isoformat(),
+            },
+        )
+
+        with (
+            patch.object(assistant_session_service, "SessionLocal", return_value=_SessionContext(db)),
+            patch.object(
+                assistant_session_service,
+                "get_assistant_session",
+                return_value=_AssistantSessionRow(captured_state),
+            ),
+        ):
+            restored = assistant_session_service.get_session("session-3")
+
+        self.assertEqual(restored["slots"]["start_time"], timestamp)
 
     def test_pop_undo_batch_returns_deep_copy(self):
         db = object()

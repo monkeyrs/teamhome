@@ -17,6 +17,7 @@
         <view class="analysis-badge">{{i18n.page.heroBadge}}</view>
       </view>
       <view class="analysis-desc">{{i18n.page.heroDesc}}</view>
+      <view class="analysis-readonly-banner" wx:if="{{teams.length && teams[teamIndex].is_readonly}}">{{i18n.page.readonlyBanner}}</view>
 
       <view class="summary-grid">
         <block wx:for="{{summaryCards}}" wx:key="label">
@@ -143,78 +144,6 @@
       </view>
     </view>
 
-    <view class="card graph-card">
-      <view class="section-header">
-        <view class="section-title">{{i18n.page.graphTitle}}</view>
-        <view class="section-meta">{{i18n.page.graphMeta}}</view>
-      </view>
-
-      <view class="graph-row">
-        <view class="graph-node graph-node-primary">
-          <view class="graph-node-title">{{i18n.page.graphPrepare}}</view>
-          <view class="graph-node-desc">{{i18n.page.graphPrepareDesc}}</view>
-        </view>
-        <view class="graph-center graph-center-arrow">
-          <view class="graph-arrow-line"></view>
-          <view class="graph-arrow-head"></view>
-        </view>
-        <view class="graph-node graph-node-blue">
-          <view class="graph-node-title">{{i18n.page.graphQueue}}</view>
-          <view class="graph-node-desc">{{i18n.page.graphQueueDesc}}</view>
-        </view>
-      </view>
-
-      <view class="graph-row graph-row-connector">
-        <view class="graph-spacer"></view>
-        <view class="graph-center">
-          <view class="graph-stem"></view>
-        </view>
-        <view class="graph-spacer"></view>
-      </view>
-
-      <view class="graph-row">
-        <view class="graph-node graph-node-green">
-          <view class="graph-node-title">{{i18n.page.graphSchedule}}</view>
-          <view class="graph-node-desc">{{i18n.page.graphScheduleDesc}}</view>
-        </view>
-        <view class="graph-center graph-center-fork">
-          <view class="graph-fork-horizontal"></view>
-          <view class="graph-fork-vertical"></view>
-        </view>
-        <view class="graph-node graph-node-orange">
-          <view class="graph-node-title">{{i18n.page.graphExpense}}</view>
-          <view class="graph-node-desc">{{i18n.page.graphExpenseDesc}}</view>
-        </view>
-      </view>
-
-      <view class="graph-row graph-row-connector">
-        <view class="graph-spacer"></view>
-        <view class="graph-center">
-          <view class="graph-stem"></view>
-        </view>
-        <view class="graph-spacer"></view>
-      </view>
-
-      <view class="graph-row">
-        <view class="graph-node graph-node-violet">
-          <view class="graph-node-title">{{i18n.page.graphCollect}}</view>
-          <view class="graph-node-desc">{{i18n.page.graphCollectDesc}}</view>
-        </view>
-        <view class="graph-center graph-center-arrow">
-          <view class="graph-arrow-line"></view>
-          <view class="graph-arrow-head"></view>
-        </view>
-        <view class="graph-node graph-node-dark">
-          <view class="graph-node-title">{{i18n.page.graphCommit}}</view>
-          <view class="graph-node-desc">{{i18n.page.graphCommitDesc}}</view>
-        </view>
-      </view>
-
-      <view class="graph-foot">
-        <view class="graph-pill">{{i18n.page.graphUndo}}</view>
-        <view class="graph-foot-text">{{i18n.page.graphUndoDesc}}</view>
-      </view>
-    </view>
   </view>
 
   <view class="floating-download-btn" bindtap="downloadAllData">{{i18n.page.downloadData}}</view>

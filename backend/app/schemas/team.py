@@ -48,6 +48,9 @@ class TeamOut(BaseModel):
     id: uuid.UUID
     name: str
     owner_id: uuid.UUID
+    is_demo: bool = False
+    is_readonly: bool = False
+    can_write: bool = True
     join_password: str | None = None
     member_count: int = 0
 
@@ -59,3 +62,4 @@ class TeamDiscoverOut(BaseModel):
     requires_password: bool
     member_count: int
     team_full: bool
+    is_demo: bool = False

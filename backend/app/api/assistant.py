@@ -12,9 +12,14 @@ from app.api.deps import get_current_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.i18n import normalize_locale, translate
-from app.crud.team import is_team_member
+from app.crud.team import can_read_team
 from app.schemas.assistant import AssistantExecuteIn, AssistantExecuteOut, AssistantUndoIn
-from app.services.assistant_orchestrator import execute_assistant, get_orchestration_debug, undo_last_assistant_batch
+from app.services.assistant_orchestrator import (
+    execute_assistant,
+    get_orchestration_debug,
+    message_requires_write_access,
+    undo_last_assistant_batch,
+)
 from app.services.data_export_service import build_user_data_export
 
 from app.services.llm.transcribe import TranscriptionError, transcribe_audio_file
@@ -61,8 +66,10 @@ def execute(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> AssistantExecuteOut:
-    if not is_team_member(db, team_id=payload.team_id, user_id=current_user.id):
+    if not can_read_team(db, team_id=payload.team_id, user_id=current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a team member")
+    if message_requires_write_access(db, team_id=payload.team_id, user_id=current_user.id, message=payload.message, locale=normalize_locale(getattr(current_user, "language", None))):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="TEAM_READ_ONLY")
 
     locale = normalize_locale(getattr(current_user, "language", None))
     try:
@@ -92,8 +99,16 @@ def undo(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> AssistantExecuteOut:
-    if not is_team_member(db, team_id=payload.team_id, user_id=current_user.id):
+    if not can_read_team(db, team_id=payload.team_id, user_id=current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a team member")
+    if message_requires_write_access(
+        db,
+        team_id=payload.team_id,
+        user_id=current_user.id,
+        message="__assistant_undo_batch__",
+        locale=normalize_locale(getattr(current_user, "language", None)),
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="TEAM_READ_ONLY")
     locale = normalize_locale(getattr(current_user, "language", None))
     try:
         result = undo_last_assistant_batch(

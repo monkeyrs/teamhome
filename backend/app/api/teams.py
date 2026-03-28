@@ -7,13 +7,19 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.crud.team import (
     add_team_member,
+    can_read_team,
     create_team,
     get_team_by_name,
+    get_team,
     get_team_member,
-    list_teams_for_user,
+    hide_demo_team,
+    is_demo_team_hidden,
+    list_accessible_teams_for_user,
     remove_team_member,
+    unhide_demo_team,
 )
 from app.schemas.team import TeamCreate, TeamDiscoverOut, TeamOut, normalize_team_name
+from app.services.demo_seed_service import ensure_demo_data
 
 TEAM_MEMBER_LIMIT = 30
 
@@ -26,6 +32,9 @@ def serialize_team(team) -> TeamOut:
         id=team.id,
         name=team.name,
         owner_id=team.owner_id,
+        is_demo=bool(getattr(team, "is_demo", False)),
+        is_readonly=bool(getattr(team, "is_demo", False)),
+        can_write=not bool(getattr(team, "is_demo", False)),
         join_password=team.join_password,
         member_count=len(members),
     )
@@ -36,7 +45,8 @@ def list_teams(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> list[TeamOut]:
-    teams = list_teams_for_user(db, current_user.id)
+    ensure_demo_data(db)
+    teams = list_accessible_teams_for_user(db, current_user.id)
     return [serialize_team(t) for t in teams]
 
 
@@ -46,6 +56,7 @@ def discover_team(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> TeamDiscoverOut:
+    ensure_demo_data(db)
     try:
         normalized_name = normalize_team_name(name)
     except ValueError as exc:
@@ -62,14 +73,16 @@ def discover_team(
         )
 
     membership = get_team_member(db, team_id=team.id, user_id=current_user.id)
+    already_joined = can_read_team(db, team_id=team.id, user_id=current_user.id)
     member_count = len(getattr(team, "members", None) or [])
     return TeamDiscoverOut(
         name=normalized_name,
         exists=True,
-        already_joined=membership is not None,
-        requires_password=bool(team.join_password),
+        already_joined=already_joined,
+        requires_password=bool(team.join_password) and not bool(team.is_demo),
         member_count=member_count,
-        team_full=member_count >= TEAM_MEMBER_LIMIT and membership is None,
+        team_full=bool(not team.is_demo and member_count >= TEAM_MEMBER_LIMIT and membership is None),
+        is_demo=bool(team.is_demo),
     )
 
 
@@ -79,8 +92,14 @@ def create_team_route(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> TeamOut:
+    ensure_demo_data(db)
     existing = get_team_by_name(db, name=payload.name)
     if existing:
+        if existing.is_demo:
+            unhide_demo_team(db, team_id=existing.id, user_id=current_user.id)
+            refreshed = get_team_by_name(db, name=payload.name)
+            return serialize_team(refreshed or existing)
+
         membership = get_team_member(db, team_id=existing.id, user_id=current_user.id)
         if membership:
             return serialize_team(existing)
@@ -109,7 +128,18 @@ def leave_team_route(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> None:
-    membership = get_team_member(db, team_id=uuid.UUID(team_id), user_id=current_user.id)
+    ensure_demo_data(db)
+    team_uuid = uuid.UUID(team_id)
+    team = get_team(db, team_uuid)
+    if not team:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+    if team.is_demo:
+        if is_demo_team_hidden(db, team_id=team_uuid, user_id=current_user.id):
+            return
+        hide_demo_team(db, team_id=team_uuid, user_id=current_user.id)
+        return
+
+    membership = get_team_member(db, team_id=team_uuid, user_id=current_user.id)
     if not membership:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team membership not found")
     remove_team_member(db, membership=membership)

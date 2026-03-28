@@ -8,7 +8,7 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.crud.finance import list_finance_records
 from app.crud.schedule import list_schedules
-from app.crud.team import is_team_member
+from app.crud.team import can_read_team
 from app.schemas.timeline import TimelineDayOut, TimelineItemOut, TimelineResponseOut
 
 router = APIRouter()
@@ -128,7 +128,7 @@ def list_timeline_route(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> TimelineResponseOut:
-    if not is_team_member(db, team_id=team_id, user_id=current_user.id):
+    if not can_read_team(db, team_id=team_id, user_id=current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a team member")
 
     validate_window(window_start, window_end)

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     CORS_ALLOW_ORIGINS: list[str] = ["*"]
     ALLOW_INSECURE_DEV_AUTH: bool = True
     ENABLE_DEBUG_ENDPOINTS: bool | None = None
+    DEMO_SEED_MODE: str | None = None
     MAX_UPLOAD_BYTES: int = 5 * 1024 * 1024
     ALLOWED_AUDIO_EXTENSIONS: list[str] = [".wav", ".mp3", ".m4a", ".aac", ".ogg", ".webm", ".mp4"]
     ALLOWED_AUDIO_CONTENT_TYPES: list[str] = [
@@ -63,6 +64,18 @@ class Settings(BaseSettings):
     def normalize_environment(cls, value: str | None) -> str:
         return (value or "development").strip().lower()
 
+    @field_validator("DEMO_SEED_MODE", mode="before")
+    @classmethod
+    def normalize_demo_seed_mode(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().lower()
+        if not normalized:
+            return None
+        if normalized not in {"auto", "manual", "off"}:
+            raise ValueError("DEMO_SEED_MODE must be one of: auto, manual, off")
+        return normalized
+
     @field_validator("CORS_ALLOW_ORIGINS", "ALLOWED_AUDIO_EXTENSIONS", "ALLOWED_AUDIO_CONTENT_TYPES", mode="before")
     @classmethod
     def parse_list_settings(cls, value):
@@ -103,6 +116,11 @@ class Settings(BaseSettings):
         if self.ENABLE_DEBUG_ENDPOINTS is not None:
             return self.ENABLE_DEBUG_ENDPOINTS
         return not self.is_production()
+
+    def demo_seed_auto_enabled(self) -> bool:
+        if self.DEMO_SEED_MODE is not None:
+            return self.DEMO_SEED_MODE == "auto"
+        return True
 
     def uses_default_database_credentials(self) -> bool:
         parsed = urlsplit(self.DATABASE_URL)

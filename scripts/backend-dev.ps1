@@ -105,6 +105,52 @@ function Test-BackendSecurityConfig {
   Write-Host "Backend security preflight: production config OK"
 }
 
+function Get-DemoSeedMode {
+  $configured = (Get-DotEnvValue -Key "DEMO_SEED_MODE" -Default "").ToLowerInvariant()
+  if (-not [string]::IsNullOrWhiteSpace($configured)) {
+    return $configured
+  }
+  return "auto"
+}
+
+function Get-ApiContainerName {
+  $containerId = (& docker compose -f $ComposeFile ps -q api 2>$null | Select-Object -First 1)
+  if (-not [string]::IsNullOrWhiteSpace($containerId)) {
+    $resolved = (& docker inspect --format "{{.Name}}" $containerId 2>$null)
+    if (-not [string]::IsNullOrWhiteSpace($resolved)) {
+      return $resolved.TrimStart("/")
+    }
+  }
+  return ""
+}
+
+function Invoke-InApiContainer {
+  param(
+    [string]$Command
+  )
+
+  $container = Get-ApiContainerName
+  if (-not [string]::IsNullOrWhiteSpace($container)) {
+    & docker exec $container sh -lc $Command
+    return
+  }
+
+  & docker compose -f $ComposeFile run --rm api sh -lc $Command
+}
+
+function Invoke-DemoSeed {
+  if ((Get-DemoSeedMode) -ne "auto") {
+    Write-Host "Demo seed step: skipped"
+    return
+  }
+
+  Invoke-InApiContainer "DEMO_SEED_MODE=manual python -m app.commands.seed_demo_data"
+  $exitCode = $LASTEXITCODE
+  if ($exitCode -ne 0) {
+    throw "demo seed failed."
+  }
+}
+
 function Compose-Up {
   & docker compose -f $ComposeFile up -d db
   if ($LASTEXITCODE -ne 0) {
@@ -118,10 +164,18 @@ function Compose-Up {
     }
   }
 
-  & docker compose -f $ComposeFile run --rm api alembic upgrade head
+  & docker compose -f $ComposeFile up -d api langgraph
   if ($LASTEXITCODE -ne 0) {
+    throw "docker compose up for api/langgraph failed."
+  }
+
+  Invoke-InApiContainer "alembic upgrade head"
+  $exitCode = $LASTEXITCODE
+  if ($exitCode -ne 0) {
     throw "database migrations failed."
   }
+
+  Invoke-DemoSeed
 
   & docker compose -f $ComposeFile up -d --force-recreate api langgraph
   if ($LASTEXITCODE -ne 0) {
@@ -142,12 +196,14 @@ function Compose-Logs {
 
 function Show-Status {
   & docker compose -f $ComposeFile ps api langgraph db
-  & docker compose -f $ComposeFile run --rm api alembic current
-  if ($LASTEXITCODE -eq 0) {
+  Invoke-InApiContainer "alembic current"
+  $exitCode = $LASTEXITCODE
+  if ($exitCode -eq 0) {
     Write-Host "Database migrations: current"
   } else {
     Write-Host "Database migrations: unavailable"
   }
+  Write-Host "Demo seed mode: $(Get-DemoSeedMode)"
   try {
     $resp = Invoke-WebRequest -Uri $HealthUrl -UseBasicParsing -TimeoutSec 5
     Write-Host "API health: HTTP $($resp.StatusCode)"
@@ -156,6 +212,11 @@ function Show-Status {
       Write-Host "Timeline route: OK"
     } else {
       Write-Host "Timeline route: MISSING"
+    }
+    if ($openapi.paths.PSObject.Properties.Name -contains "/teams") {
+      Write-Host "Team bootstrap route: OK"
+    } else {
+      Write-Host "Team bootstrap route: MISSING"
     }
   } catch {
     Write-Host "API health: unreachable ($HealthUrl)"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import datetime as dt
 import uuid
 
 from app.core.database import SessionLocal
@@ -11,6 +12,47 @@ from app.crud.assistant_state import (
     pop_assistant_undo_batch,
     save_assistant_undo_batch,
 )
+
+_SERIALIZED_TYPE_KEY = "__teamhome_type__"
+_SERIALIZED_VALUE_KEY = "value"
+_DATETIME_TYPE = "datetime"
+
+
+def _serialize_session_value(value):
+    if isinstance(value, dt.datetime):
+        return {
+            _SERIALIZED_TYPE_KEY: _DATETIME_TYPE,
+            _SERIALIZED_VALUE_KEY: value.isoformat(),
+        }
+    if isinstance(value, list):
+        return [_serialize_session_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [_serialize_session_value(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            str(key): _serialize_session_value(item)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _deserialize_session_value(value):
+    if isinstance(value, list):
+        return [_deserialize_session_value(item) for item in value]
+    if isinstance(value, dict):
+        serialized_type = value.get(_SERIALIZED_TYPE_KEY)
+        if serialized_type == _DATETIME_TYPE:
+            raw_value = value.get(_SERIALIZED_VALUE_KEY)
+            if isinstance(raw_value, str):
+                try:
+                    return dt.datetime.fromisoformat(raw_value)
+                except ValueError:
+                    return raw_value
+        return {
+            key: _deserialize_session_value(item)
+            for key, item in value.items()
+        }
+    return value
 
 
 def create_session(state: dict) -> str:
@@ -26,7 +68,7 @@ def get_session(session_id: str | None) -> dict | None:
         session = get_assistant_session(db, session_id=session_id)
         if session is None:
             return None
-        return copy.deepcopy(session.state or {})
+        return _deserialize_session_value(copy.deepcopy(session.state or {}))
 
 
 def save_session(session_id: str, state: dict) -> None:
@@ -34,7 +76,7 @@ def save_session(session_id: str, state: dict) -> None:
         create_or_replace_assistant_session(
             db,
             session_id=session_id,
-            state=copy.deepcopy(state),
+            state=_serialize_session_value(copy.deepcopy(state)),
         )
 
 

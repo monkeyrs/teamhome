@@ -108,6 +108,46 @@ export_compose_env() {
   DATABASE_URL="$(read_env_value DATABASE_URL "${default_database_url}")"
 }
 
+read_demo_seed_mode() {
+  local configured
+  configured="$(read_env_value DEMO_SEED_MODE '')"
+  configured="${configured,,}"
+  if [[ -n "${configured}" ]]; then
+    printf '%s' "${configured}"
+    return
+  fi
+  printf '%s' "auto"
+}
+
+get_api_container_name() {
+  local container_id
+  container_id="$(docker compose -f "${COMPOSE_FILE}" ps -q api 2>/dev/null | head -n 1 || true)"
+  if [[ -z "${container_id}" ]]; then
+    return
+  fi
+  docker inspect --format '{{.Name}}' "${container_id}" 2>/dev/null | sed 's#^/##'
+}
+
+run_in_api_container() {
+  local command="$1"
+  local container_name
+  container_name="$(get_api_container_name)"
+  if [[ -n "${container_name}" ]]; then
+    docker exec "${container_name}" sh -lc "${command}"
+    return
+  fi
+  docker compose -f "${COMPOSE_FILE}" run --rm api sh -lc "${command}"
+}
+
+run_demo_seed_if_auto() {
+  if [[ "$(read_demo_seed_mode)" != "auto" ]]; then
+    echo "demo seed deploy step: skipped"
+    return
+  fi
+  echo "demo seed deploy step: running"
+  run_in_api_container "DEMO_SEED_MODE=manual python -m app.commands.seed_demo_data"
+}
+
 echo "[1/4] pull latest code"
 git pull origin main
 
@@ -116,12 +156,15 @@ validate_backend_security_config
 export_compose_env
 docker compose -f "${COMPOSE_FILE}" up -d db
 docker compose -f "${COMPOSE_FILE}" build api langgraph
-docker compose -f "${COMPOSE_FILE}" run --rm api alembic upgrade head
+docker compose -f "${COMPOSE_FILE}" up -d api langgraph
+run_in_api_container "alembic upgrade head"
+run_demo_seed_if_auto
 docker compose -f "${COMPOSE_FILE}" up -d --force-recreate api langgraph
 
 echo "[3/4] show container status"
 docker compose -f "${COMPOSE_FILE}" ps
-docker compose -f "${COMPOSE_FILE}" run --rm api alembic current && echo "Database migrations: current" || echo "Database migrations: FAILED"
+run_in_api_container "alembic current" && echo "Database migrations: current" || echo "Database migrations: FAILED"
+echo "Demo seed mode: $(read_demo_seed_mode)"
 
 echo "[4/4] check api health"
 curl -fsS http://127.0.0.1:8000/openapi.json >/dev/null

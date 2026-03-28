@@ -1,6 +1,4 @@
 const MESSAGES = require("../i18n/messages");
-const MESSAGE_OVERRIDES = require("../i18n/messages-overrides");
-const TIMELINE_MESSAGE_OVERRIDES = require("../i18n/messages-timeline-overrides");
 
 const DEFAULT_LOCALE = "zh-CN";
 const SUPPORTED_LOCALES = ["zh-CN", "en-US", "ja-JP"];
@@ -17,39 +15,7 @@ function normalizeLocale(locale) {
 
 function getMessages(locale) {
   const normalized = normalizeLocale(locale);
-  const base = MESSAGES[normalized] || MESSAGES[DEFAULT_LOCALE];
-  const overrides = mergeMessages(
-    MESSAGE_OVERRIDES[normalized] || MESSAGE_OVERRIDES[DEFAULT_LOCALE] || {},
-    TIMELINE_MESSAGE_OVERRIDES[normalized] || TIMELINE_MESSAGE_OVERRIDES[DEFAULT_LOCALE] || {}
-  );
-  return mergeMessages(base, overrides);
-}
-
-function mergeMessages(base, overrides) {
-  if (!overrides || typeof overrides !== "object") {
-    return base;
-  }
-  if (!base || typeof base !== "object") {
-    return overrides;
-  }
-  const merged = Object.assign({}, base);
-  Object.keys(overrides).forEach((key) => {
-    const baseValue = base[key];
-    const overrideValue = overrides[key];
-    if (
-      baseValue &&
-      overrideValue &&
-      typeof baseValue === "object" &&
-      typeof overrideValue === "object" &&
-      !Array.isArray(baseValue) &&
-      !Array.isArray(overrideValue)
-    ) {
-      merged[key] = mergeMessages(baseValue, overrideValue);
-      return;
-    }
-    merged[key] = overrideValue;
-  });
-  return merged;
+  return MESSAGES[normalized] || MESSAGES[DEFAULT_LOCALE];
 }
 
 function getLocale() {

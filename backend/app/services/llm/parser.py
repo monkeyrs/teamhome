@@ -39,9 +39,9 @@ def _infer_finance_type_with_llm(text: str, fallback: str) -> str:
     if not client:
         return fallback
     system = (
-        "Classify finance record type from user text.\n"
-        "Always reason in English.\n"
-        "Return JSON only: {\"type\":\"income\"} or {\"type\":\"expense\"}."
+        "Classify the finance record type.\n"
+        "Think in English. Output JSON only.\n"
+        'Return exactly one of: {"type":"income"} or {"type":"expense"}.'
     )
     try:
         data = client.chat_json(system=system, user=text) or {}
@@ -320,9 +320,10 @@ def parse_finance_text(text: str, *, use_llm: bool = True) -> dict:
         }
 
     system = (
-        "Extract finance fields from user text.\n"
-        "Always reason and classify in English.\n"
-        "Return JSON only with fields: amount(number|null), type(income|expense|null), category(string|null), occurred_at(ISO8601|null)."
+        "Extract finance fields from one user message.\n"
+        "Think in English. Output JSON only.\n"
+        "Do not infer unsupported fields aggressively.\n"
+        'Schema: {"amount":number|null,"type":"income|expense|null","category":string|null,"occurred_at":ISO8601|null}'
     )
     try:
         data = client.chat_json(system=system, user=text) or {}

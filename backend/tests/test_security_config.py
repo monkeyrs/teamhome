@@ -4,6 +4,29 @@ from app.core.config import Settings
 
 
 class SecurityConfigTests(unittest.TestCase):
+    def test_demo_seed_defaults_to_auto_in_development(self):
+        settings = Settings()
+
+        self.assertTrue(settings.demo_seed_auto_enabled())
+
+    def test_demo_seed_defaults_to_auto_in_production(self):
+        settings = Settings(
+            ENVIRONMENT="production",
+            JWT_SECRET="x" * 32,
+            CORS_ALLOW_ORIGINS=["https://teamhome.example"],
+            ALLOW_INSECURE_DEV_AUTH=False,
+            ENABLE_DEBUG_ENDPOINTS=False,
+            WECHAT_APPID="appid",
+            WECHAT_SECRET="secret",
+        )
+
+        self.assertTrue(settings.demo_seed_auto_enabled())
+
+    def test_demo_seed_can_be_enabled_explicitly(self):
+        settings = Settings(DEMO_SEED_MODE="auto", ENVIRONMENT="production")
+
+        self.assertTrue(settings.demo_seed_auto_enabled())
+
     def test_validate_runtime_security_rejects_default_database_credentials_in_production(self):
         settings = Settings(
             ENVIRONMENT="production",

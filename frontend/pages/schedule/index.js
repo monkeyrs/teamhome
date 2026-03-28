@@ -1,6 +1,7 @@
 const { bootstrapSession, getCurrentTeamState } = require("../../utils/bootstrap");
 const { applyPageLocale, translateMessage } = require("../../utils/i18n");
 const { getDataVersion, markDataDirty } = require("../../utils/data-sync");
+const { triggerFeedback } = require("../../utils/feedback");
 const scheduleApi = require("./modules/api");
 const {
   buildComposerClosedState,
@@ -43,6 +44,7 @@ const SWIPE_LAZINESS = 54;
 const DIRECTION_LOCK_THRESHOLD = 12;
 const PAST_WINDOW_DAYS = 120;
 const FUTURE_WINDOW_DAYS = 90;
+const DAY_RAIL_STICKY_TOP = 132;
 
 Page({
   data: {
@@ -57,6 +59,8 @@ Page({
     days: [],
     visibleDays: [],
     activeKindFilter: "",
+    activeStickyDay: null,
+    stickyDayFeedbackActive: false,
     initialScrollDone: false,
     isQuickCreateOpen: false,
     isFilterOpen: false,
@@ -85,6 +89,10 @@ Page({
       page: {},
       chart: {}
     }
+  },
+
+  onPageScroll(event) {
+    this.refreshStickyDay(event && typeof event.scrollTop === "number" ? event.scrollTop : 0);
   },
 
   async onShow() {
@@ -127,6 +135,8 @@ Page({
         this.data.financeForm.category,
         this.data.financeForm.type
       )
+    }, () => {
+      this.rebuildStickyDayAnchors();
     });
   },
 
@@ -147,6 +157,8 @@ Page({
         scheduleSyncVersion: 0,
         financeSyncVersion: 0,
         activeKindFilter: "",
+        activeStickyDay: null,
+        stickyDayFeedbackActive: false,
         days: [],
         visibleDays: [],
         initialScrollDone: false,
@@ -169,6 +181,7 @@ Page({
         categorySuggestions: []
       });
       if (!teamId) {
+        this.daySectionAnchors = [];
         return;
       }
       const teamIndex = Math.max(0, teams.findIndex((item) => item.id === teamId));
@@ -191,6 +204,15 @@ Page({
 
   currentTeam() {
     return this.data.teams[this.data.teamIndex] || null;
+  },
+
+  currentTeamReadonly() {
+    const team = this.currentTeam();
+    return !!(team && team.is_readonly);
+  },
+
+  showReadonlyTip() {
+    wx.showToast({ title: this.t("page.readonlyTip"), icon: "none" });
   },
 
   buildCalendarWeeks(monthKey, anchorDay) {
@@ -218,7 +240,10 @@ Page({
       days,
       visibleDays: this.buildVisibleDays(days, this.data.activeKindFilter)
     });
-    wx.nextTick(() => this.scrollToTodayAnchor());
+    wx.nextTick(() => {
+      this.rebuildStickyDayAnchors();
+      this.scrollToTodayAnchor();
+    });
   },
 
   async loadCommonCategories(teamId) {
@@ -280,9 +305,10 @@ Page({
       const rect = res && res[0];
       const viewport = res && res[1];
       if (!rect || !viewport) return;
-      const top = Math.max((viewport.scrollTop || 0) + rect.top - 132, 0);
+      const top = Math.max((viewport.scrollTop || 0) + rect.top - DAY_RAIL_STICKY_TOP, 0);
       wx.pageScrollTo({ scrollTop: top, duration: 0 });
       this.setData({ initialScrollDone: true });
+      this.refreshStickyDay(top);
     });
   },
 
@@ -347,9 +373,78 @@ Page({
         wx.showToast({ title: this.t("page.dayNotLoaded"), icon: "none" });
         return;
       }
-      const top = Math.max((viewport.scrollTop || 0) + rect.top - 132, 0);
+      const top = Math.max((viewport.scrollTop || 0) + rect.top - DAY_RAIL_STICKY_TOP, 0);
       wx.pageScrollTo({ scrollTop: top, duration: 220 });
+      this.refreshStickyDay(top);
     });
+  },
+
+  rebuildStickyDayAnchors() {
+    const visibleDays = this.data.visibleDays || [];
+    if (!visibleDays.length) {
+      this.daySectionAnchors = [];
+      if (this.data.activeStickyDay) {
+        this.setData({ activeStickyDay: null });
+      }
+      return;
+    }
+
+    const query = wx.createSelectorQuery();
+    visibleDays.forEach((day) => {
+      query.select(`#day-${day.day_key}`).boundingClientRect();
+    });
+    query.selectViewport().scrollOffset();
+    query.exec((res) => {
+      if (!Array.isArray(res) || !res.length) return;
+      const viewport = res[res.length - 1] || {};
+      const scrollTop = viewport.scrollTop || 0;
+      const rects = res.slice(0, visibleDays.length);
+      this.daySectionAnchors = rects
+        .map((rect, index) => {
+          if (!rect) return null;
+          return {
+            dayKey: visibleDays[index].day_key,
+            top: scrollTop + rect.top
+          };
+        })
+        .filter(Boolean);
+      this.refreshStickyDay(scrollTop);
+    });
+  },
+
+  refreshStickyDay(scrollTop = 0) {
+    const anchors = this.daySectionAnchors || [];
+    const visibleDays = this.data.visibleDays || [];
+    if (!anchors.length || !visibleDays.length) {
+      if (this.data.activeStickyDay) {
+        this.setData({ activeStickyDay: null });
+      }
+      return;
+    }
+
+    const targetTop = scrollTop + DAY_RAIL_STICKY_TOP + 1;
+    let activeKey = anchors[0].dayKey;
+    for (let index = 0; index < anchors.length; index += 1) {
+      if (anchors[index].top <= targetTop) {
+        activeKey = anchors[index].dayKey;
+        continue;
+      }
+      break;
+    }
+
+    const current = this.data.activeStickyDay;
+    if (current && current.day_key === activeKey) {
+      return;
+    }
+    const activeDay = visibleDays.find((day) => day.day_key === activeKey) || null;
+    if (current && activeDay && current.day_key !== activeDay.day_key) {
+      triggerFeedback(this, {
+        hapticKey: "schedule-sticky-day",
+        flashKey: "stickyDayFeedbackActive",
+        flashDuration: 120
+      });
+    }
+    this.setData({ activeStickyDay: activeDay });
   },
 
   toggleFilterMenu() {
@@ -366,10 +461,16 @@ Page({
       activeKindFilter: nextFilter,
       isFilterOpen: false,
       visibleDays: this.buildVisibleDays(this.data.days, nextFilter)
+    }, () => {
+      this.rebuildStickyDayAnchors();
     });
   },
 
   openCreateSchedule() {
+    if (this.currentTeamReadonly()) {
+      this.showReadonlyTip();
+      return;
+    }
     const dateText = formatDate(new Date());
     this.setData(buildScheduleCreateComposerState(dateText));
     this.loadPlaceSuggestions((this.currentTeam() || {}).id, "");
@@ -384,6 +485,10 @@ Page({
   },
 
   openFinanceComposer(type) {
+    if (this.currentTeamReadonly()) {
+      this.showReadonlyTip();
+      return;
+    }
     const now = new Date();
     this.setData(buildFinanceCreateComposerState({
       type,
@@ -394,16 +499,28 @@ Page({
   },
 
   openScheduleEditor(item) {
+    if (this.currentTeamReadonly()) {
+      this.showReadonlyTip();
+      return;
+    }
     this.setData(buildScheduleEditComposerState(item));
     this.loadPlaceSuggestions((this.currentTeam() || {}).id, item.location || "");
   },
 
   openScheduleDuplicate(item) {
+    if (this.currentTeamReadonly()) {
+      this.showReadonlyTip();
+      return;
+    }
     this.setData(buildScheduleDuplicateComposerState(item));
     this.loadPlaceSuggestions((this.currentTeam() || {}).id, item.location || "");
   },
 
   openFinanceEditor(item) {
+    if (this.currentTeamReadonly()) {
+      this.showReadonlyTip();
+      return;
+    }
     const type = item.kind === "income" ? "income" : "expense";
     const category = item.category || "";
     this.setData(buildFinanceEditComposerState(
@@ -414,6 +531,10 @@ Page({
   },
 
   openFinanceDuplicate(item) {
+    if (this.currentTeamReadonly()) {
+      this.showReadonlyTip();
+      return;
+    }
     const type = item.kind === "income" ? "income" : "expense";
     this.setData(buildFinanceDuplicateComposerState(
       item,
@@ -554,6 +675,10 @@ Page({
   },
 
   async submitComposer() {
+    if (this.currentTeamReadonly()) {
+      this.showReadonlyTip();
+      return;
+    }
     await submitComposer({
       team: this.currentTeam(),
       composerKind: this.data.composerKind,
@@ -678,6 +803,10 @@ Page({
   },
 
   async confirmDeleteEditing() {
+    if (this.currentTeamReadonly()) {
+      this.showReadonlyTip();
+      return;
+    }
     await confirmDeleteEditing({
       team: this.currentTeam(),
       composerMode: this.data.composerMode,

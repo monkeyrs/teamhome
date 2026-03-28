@@ -210,15 +210,21 @@
           </view>
           <view class="today-action" bindtap="backToToday">{{i18n.page.backToToday}}</view>
         </view>
+        <view class="readonly-banner" wx:if="{{teams.length && teams[teamIndex].is_readonly}}">{{i18n.page.readonlyBanner}}</view>
       </view>
     </view>
 
     <view class="timeline-flow">
+      <view class="day-rail-floating {{stickyDayFeedbackActive ? 'day-rail-floating-feedback' : ''}}" wx:if="{{activeStickyDay}}" bindtap="openCalendar" data-day-key="{{activeStickyDay.day_key}}">
+        <view class="day-month">{{activeStickyDay.monthText}}</view>
+        <view class="day-number {{activeStickyDay.is_today ? 'day-number-today' : ''}}">{{activeStickyDay.dayText}}</view>
+        <view class="day-weekday">{{activeStickyDay.weekdayText}}</view>
+      </view>
       <block wx:if="{{visibleDays.length}}">
         <block wx:for="{{visibleDays}}" wx:key="day_key" wx:for-item="day" wx:for-index="dayIndex">
           <view id="day-{{day.day_key}}" class="day-section">
             <view class="day-rail-hit" data-day-key="{{day.day_key}}" bindtap="openCalendar">
-              <view class="day-rail">
+              <view class="day-rail" wx:if="{{!activeStickyDay || activeStickyDay.day_key !== day.day_key}}">
                 <view class="day-month">{{day.monthText}}</view>
                 <view class="day-number {{day.is_today ? 'day-number-today' : ''}}">{{day.dayText}}</view>
                 <view class="day-weekday">{{day.weekdayText}}</view>
@@ -263,12 +269,12 @@
                         <view class="meta-chip meta-chip-category meta-chip-category-{{entry.kind}}" wx:if="{{entry.metaSecondaryText}}">{{entry.metaSecondaryText}}</view>
                       </view>
 
-                      <view class="detail-grid">
-                        <view class="detail-cell">
+                      <view class="detail-grid" wx:if="{{entry.hasLocation || entry.hasNote}}">
+                        <view class="detail-cell" wx:if="{{entry.hasLocation}}">
                           <view class="detail-label">{{i18n.page.place}}</view>
                           <view class="detail-value">{{entry.locationText}}</view>
                         </view>
-                        <view class="detail-cell detail-cell-full">
+                        <view class="detail-cell detail-cell-full" wx:if="{{entry.hasNote}}">
                           <view class="detail-label">{{i18n.page.note}}</view>
                           <view class="detail-value">{{entry.noteText}}</view>
                         </view>
