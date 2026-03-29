@@ -57,6 +57,12 @@ function undoAssistant(teamId) {
   });
 }
 
+function getAssistantGraphState(params) {
+  return request({
+    path: `/assistant/graph-state?team_id=${encodeURIComponent(params.teamId)}&session_id=${encodeURIComponent(params.sessionId)}`
+  });
+}
+
 function getOrchestration() {
   return request({
     path: "/assistant/orchestration",
@@ -79,6 +85,7 @@ module.exports = {
   leaveTeam,
   executeAssistant,
   undoAssistant,
+  getAssistantGraphState,
   getOrchestration,
   downloadAssistantData
 };

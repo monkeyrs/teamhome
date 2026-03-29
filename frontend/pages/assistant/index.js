@@ -8,6 +8,7 @@ const { resolveTeamIndex, resolveCurrentTeam, syncTeamsToApp } = require("./modu
 const {
   createInitialData,
   createEmptyAssistantGraphState,
+  normalizeGraphState,
   translate,
   formatAnswerStatus: mapAnswerStatusText,
   buildAssistantGraphNodes,
@@ -135,8 +136,25 @@ Page({
     }, this.getProcessingTickDelay());
   },
 
-  startProcessingIndicator() {
-    const emptyGraphState = createEmptyAssistantGraphState();
+  createLoadingGraphState(sessionId) {
+    const graphState = createEmptyAssistantGraphState();
+    graphState.available = true;
+    graphState.threadId = sessionId || "";
+    graphState.threadStatus = "busy";
+    graphState.highlightedStages = ["prepare"];
+    return graphState;
+  },
+
+  ensureVisibleGraphState(graphState, sessionId) {
+    const normalized = normalizeGraphState(graphState);
+    if (!normalized.highlightedStages.length && (normalized.available || normalized.threadId || sessionId || this.data.loading)) {
+      normalized.highlightedStages = ["prepare"];
+    }
+    return normalized;
+  },
+
+  startProcessingIndicator(sessionId) {
+    const loadingGraphState = this.createLoadingGraphState(sessionId);
     this.stopProcessingIndicator();
     this.setData({
       answer: this.getProcessingText(),
@@ -148,8 +166,8 @@ Page({
       assistantReturnedSessionId: "",
       assistantMissingSlots: [],
       firstMissingSlot: "",
-      assistantGraphState: emptyGraphState,
-      assistantGraphNodes: buildAssistantGraphNodes(emptyGraphState, this.data.graphI18n || {})
+      assistantGraphState: loadingGraphState,
+      assistantGraphNodes: buildAssistantGraphNodes(loadingGraphState, this.data.graphI18n || {})
     });
 
     this.scheduleProcessingTick();
@@ -160,6 +178,46 @@ Page({
       clearTimeout(this._processingTimer);
       this._processingTimer = null;
     }
+  },
+
+  stopGraphStatePolling() {
+    if (this._graphStatePollingTimer) {
+      clearTimeout(this._graphStatePollingTimer);
+      this._graphStatePollingTimer = null;
+    }
+  },
+
+  async pollGraphState(teamId, sessionId, requestToken) {
+    if (this._activeRequestToken !== requestToken || this._ignoredRequestTokens.has(requestToken)) {
+      return;
+    }
+    try {
+      const payload = await assistantApi.getAssistantGraphState({ teamId, sessionId });
+      if (this._activeRequestToken !== requestToken || this._ignoredRequestTokens.has(requestToken)) {
+        return;
+      }
+      const graphState = this.ensureVisibleGraphState(payload && payload.graph_state, sessionId);
+      this.setData({
+        assistantGraphState: graphState,
+        assistantGraphNodes: buildAssistantGraphNodes(graphState, this.data.graphI18n || {})
+      });
+    } catch (err) {
+      // Ignore transient polling errors and keep the last rendered graph state.
+    } finally {
+      if (this.data.loading && this._activeRequestToken === requestToken && !this._ignoredRequestTokens.has(requestToken)) {
+        this._graphStatePollingTimer = setTimeout(() => {
+          this.pollGraphState(teamId, sessionId, requestToken);
+        }, 1000);
+      }
+    }
+  },
+
+  scheduleGraphStatePolling(teamId, sessionId, requestToken) {
+    this.stopGraphStatePolling();
+    if (!teamId || !sessionId) {
+      return;
+    }
+    this.pollGraphState(teamId, sessionId, requestToken);
   },
 
   ensureRequestTracking() {
@@ -175,10 +233,12 @@ Page({
 
   onHide() {
     this.stopProcessingIndicator();
+    this.stopGraphStatePolling();
   },
 
   onUnload() {
     this.stopProcessingIndicator();
+    this.stopGraphStatePolling();
   },
 
   applyLocale() {
@@ -590,6 +650,7 @@ Page({
     if (!this._activeRequestToken) return;
     this._ignoredRequestTokens.add(this._activeRequestToken);
     this.stopProcessingIndicator();
+    this.stopGraphStatePolling();
     this.setData({
       loading: false,
       assistantConversationSessionId: "",
@@ -620,12 +681,15 @@ Page({
 
     this.ensureRequestTracking();
     const continueMutation = !!this.data.assistantMutationSessionId && this.data.answerStatus === "collecting";
-    const sessionId = continueMutation ? this.data.assistantMutationSessionId : (this.data.assistantConversationSessionId || null);
+    const sessionId = continueMutation
+      ? this.data.assistantMutationSessionId
+      : (this.data.assistantConversationSessionId || createRequestToken());
 
     const requestToken = createRequestToken();
     this._activeRequestToken = requestToken;
     this.setData({ loading: true });
-    this.startProcessingIndicator();
+    this.startProcessingIndicator(sessionId);
+    this.scheduleGraphStatePolling(team.id, sessionId, requestToken);
 
     try {
       const data = await assistantApi.executeAssistant({
@@ -638,14 +702,15 @@ Page({
       }
 
       syncDirtyScopesFromAssistant(team.id, data);
+      const responseSessionId = (data && data.session_id) || "";
       const mapped = mapAssistantResponse(data, {
         clearQuestion: true,
         formatStatus: (status) => this.formatAnswerStatus(status)
       });
+      mapped.assistantGraphState = this.ensureVisibleGraphState(mapped.assistantGraphState, responseSessionId);
       mapped.processingDots = 0;
       mapped.assistantGraphNodes = buildAssistantGraphNodes(mapped.assistantGraphState, this.data.graphI18n || {});
       const responseIntent = data && data.intent;
-      const responseSessionId = (data && data.session_id) || "";
       const responseMode = data && data.data && data.data.session_mode;
       const responseIsMutation = responseMode === "mutation" || (!responseMode && isMutationIntent(responseIntent));
       if (responseIsMutation) {
@@ -668,6 +733,7 @@ Page({
       wx.showToast({ title: this.t("common.sendFailed"), icon: "none" });
     } finally {
       this.stopProcessingIndicator();
+      this.stopGraphStatePolling();
       this._ignoredRequestTokens.delete(requestToken);
       if (this._activeRequestToken === requestToken) {
         this._activeRequestToken = "";
@@ -699,6 +765,7 @@ Page({
         clearQuestion: false,
         formatStatus: (status) => this.formatAnswerStatus(status)
       });
+      mapped.assistantGraphState = this.ensureVisibleGraphState(mapped.assistantGraphState, (data && data.session_id) || "");
       mapped.processingDots = 0;
       mapped.assistantGraphNodes = buildAssistantGraphNodes(mapped.assistantGraphState, this.data.graphI18n || {});
       mapped.assistantMutationSessionId = "";

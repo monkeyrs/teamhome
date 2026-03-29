@@ -13,6 +13,26 @@ _AMOUNT_RE = re.compile(PARSER_DATA["amount_pattern"])
 _BARE_NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
 _SCHEDULE_DURATION_RE = re.compile(PARSER_DATA["schedule_duration_pattern"])
 _CLOCK_RE = re.compile(PARSER_DATA["schedule_clock_pattern"], re.IGNORECASE)
+_EXPLICIT_CLOCK_RE = re.compile(r"(?P<hour>\d{1,2})(?:(?::(?P<minute>\d{2}))|(?:[点點](?P<half>半)?))", re.IGNORECASE)
+_CJK_WEEKDAY_RE = re.compile(
+    r"(?P<prefix>这周|本周|这星期|这个星期|下周|下星期|下下周|下下星期)?(?P<weekday>周[一二三四五六日天]|星期[一二三四五六日天])"
+)
+_CJK_MONTH_DAY_RE = re.compile(r"(?:(?P<year>\d{4})\s*年\s*)?(?P<month>\d{1,2})\s*月\s*(?P<day>\d{1,2})\s*日?")
+_SLASH_MONTH_DAY_RE = re.compile(r"(?<!\d)(?:(?P<year>\d{4})[/-])?(?P<month>\d{1,2})[/-](?P<day>\d{1,2})(?!\d)")
+_WEEKDAY_INDEX = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6, "天": 6}
+_THIS_WEEK_PREFIXES = {"这周", "本周", "这星期", "这个星期"}
+_NEXT_WEEK_PREFIXES = {"下周", "下星期"}
+_NEXT_NEXT_WEEK_PREFIXES = {"下下周", "下下星期"}
+_AFTERNOON_TERMS = {"afternoon", "下午", "午后"}
+_EVENING_TERMS = {"evening", "tonight", "晚上", "今晚", "夜"}
+_NOON_TERMS = {"noon", "中午"}
+_MORNING_TERMS = {"morning", "上午", "早上", "午前"}
+_DAWN_TERMS = {"late night", "凌晨", "深夜"}
+
+
+def _contains_any_term(text: str, terms: set[str]) -> bool:
+    lowered = text.casefold()
+    return any(term.casefold() in lowered for term in terms)
 
 
 def _guess_finance_type(text: str) -> str:
@@ -141,6 +161,8 @@ def _apply_relative_day(value: dt.datetime | None, text: str) -> dt.datetime | N
 def _has_schedule_time_hint(text: str) -> bool:
     if _CLOCK_RE.search(text):
         return True
+    if _CJK_WEEKDAY_RE.search(text) or _CJK_MONTH_DAY_RE.search(text) or _SLASH_MONTH_DAY_RE.search(text):
+        return True
     markers = set(PARSER_DATA["schedule_time_markers"])
     for terms in RELATIVE_DAY_TERMS.values():
         markers.update(terms)
@@ -247,8 +269,130 @@ def _infer_relative_schedule_start(text: str) -> dt.datetime | None:
     return target.replace(hour=hour)
 
 
+def _week_start(base: dt.datetime) -> dt.date:
+    return (base - dt.timedelta(days=base.weekday())).date()
+
+
+def _resolve_weekday_date(text: str, base: dt.datetime) -> dt.date | None:
+    match = _CJK_WEEKDAY_RE.search(text)
+    if not match:
+        return None
+
+    weekday_token = match.group("weekday") or ""
+    weekday_index = _WEEKDAY_INDEX.get(weekday_token[-1])
+    if weekday_index is None:
+        return None
+
+    prefix = (match.group("prefix") or "").strip()
+    current_week_start = _week_start(base)
+    if prefix in _NEXT_NEXT_WEEK_PREFIXES:
+        return current_week_start + dt.timedelta(days=weekday_index, weeks=2)
+    if prefix in _NEXT_WEEK_PREFIXES:
+        return current_week_start + dt.timedelta(days=weekday_index, weeks=1)
+    if prefix in _THIS_WEEK_PREFIXES:
+        return current_week_start + dt.timedelta(days=weekday_index)
+
+    delta_days = weekday_index - base.weekday()
+    if delta_days < 0:
+        delta_days += 7
+    return base.date() + dt.timedelta(days=delta_days)
+
+
+def _build_month_day_candidate(*, year: int | None, month: int, day: int, base: dt.datetime) -> dt.date | None:
+    candidate_year = year or base.year
+    try:
+        candidate = dt.date(candidate_year, month, day)
+    except ValueError:
+        return None
+    if year is None and candidate < base.date():
+        try:
+            candidate = dt.date(candidate_year + 1, month, day)
+        except ValueError:
+            return None
+    return candidate
+
+
+def _resolve_absolute_date(text: str, base: dt.datetime) -> dt.date | None:
+    for pattern in (_CJK_MONTH_DAY_RE, _SLASH_MONTH_DAY_RE):
+        match = pattern.search(text)
+        if not match:
+            continue
+        year = int(match.group("year")) if match.group("year") else None
+        month = int(match.group("month"))
+        day = int(match.group("day"))
+        candidate = _build_month_day_candidate(year=year, month=month, day=day, base=base)
+        if candidate is not None:
+            return candidate
+    return None
+
+
+def _resolve_relative_date(text: str, base: dt.datetime) -> dt.date | None:
+    offset = _relative_day_offset(text)
+    if offset is None:
+        return None
+    return base.date() + dt.timedelta(days=offset)
+
+
+def _schedule_profile_hour(text: str) -> int | None:
+    for profile in PARSER_DATA["schedule_time_profiles"]:
+        terms = set(profile.get("terms") or [])
+        if _contains_term(text, terms):
+            return int(profile.get("hour"))
+    return None
+
+
+def _resolve_clock_components(text: str) -> tuple[int, int] | None:
+    match = _EXPLICIT_CLOCK_RE.search(text)
+    if not match:
+        return None
+
+    hour = int(match.group("hour"))
+    minute = int(match.group("minute") or 0)
+    if match.group("half"):
+        minute = 30
+
+    if _contains_any_term(text, _DAWN_TERMS):
+        hour = 0 if hour == 12 else hour
+    elif _contains_any_term(text, _MORNING_TERMS):
+        hour = 0 if hour == 12 else hour
+    elif _contains_any_term(text, _NOON_TERMS):
+        if 1 <= hour < 12:
+            hour += 12
+    elif _contains_any_term(text, _AFTERNOON_TERMS | _EVENING_TERMS):
+        if hour < 12:
+            hour += 12
+
+    return hour, minute
+
+
+def _combine_schedule_datetime(date_value: dt.date, text: str, base: dt.datetime) -> dt.datetime | None:
+    clock = _resolve_clock_components(text)
+    if clock is not None:
+        hour, minute = clock
+        return dt.datetime.combine(date_value, dt.time(hour=hour, minute=minute), tzinfo=base.tzinfo)
+
+    profile_hour = _schedule_profile_hour(text)
+    if profile_hour is not None:
+        return dt.datetime.combine(date_value, dt.time(hour=profile_hour, minute=0), tzinfo=base.tzinfo)
+    return None
+
+
+def _resolve_explicit_schedule_start(text: str) -> dt.datetime | None:
+    base = _now_local().replace(second=0, microsecond=0)
+    date_value = _resolve_absolute_date(text, base) or _resolve_weekday_date(text, base) or _resolve_relative_date(text, base)
+    if date_value is None:
+        return None
+    return _combine_schedule_datetime(date_value, text, base)
+
+
 def _clean_schedule_title(text: str) -> str:
     title = text or ""
+    title = re.sub(r"^(?:创建日程|新增日程|添加日程|安排日程|安排一下|记个日程|记一下|帮我安排一下)\s*", "", title)
+    title = re.sub(r"^(?:create schedule|add schedule|schedule)\s*", "", title, flags=re.IGNORECASE)
+    title = re.sub(r"(?:下下周[一二三四五六日天]|下下星期[一二三四五六日天]|下周[一二三四五六日天]|下星期[一二三四五六日天]|这周[一二三四五六日天]|本周[一二三四五六日天]|这星期[一二三四五六日天]|这个星期[一二三四五六日天]|周[一二三四五六日天]|星期[一二三四五六日天])", "", title)
+    title = re.sub(r"(?:(?:\d{4}\s*年\s*)?\d{1,2}\s*月\s*\d{1,2}\s*日?)", "", title)
+    title = re.sub(r"(?:(?:\d{4}[/-])?\d{1,2}[/-]\d{1,2})", "", title)
+    title = re.sub(r"(?:\d{1,2}(?::\d{2})?|\d{1,2}[点點](?:半)?|[零一二两三四五六七八九十百]+[点點](?:半)?)", "", title)
     for pattern in PARSER_DATA["schedule_title_patterns"][:-1]:
         title = re.sub(pattern, "", title)
     title = re.sub(PARSER_DATA["schedule_title_patterns"][-1], " ", title).strip()
@@ -359,7 +503,7 @@ def parse_schedule_text(text: str) -> dict:
     if not _has_schedule_time_hint(text):
         return {"title": text, "start_time": None, "end_time": None}
 
-    start = _apply_relative_day(_parse_schedule_datetime(text), text) or _infer_relative_schedule_start(text)
+    start = _resolve_explicit_schedule_start(text) or _apply_relative_day(_parse_schedule_datetime(text), text) or _infer_relative_schedule_start(text)
 
     title_source = text
     for separator in ("，", ",", "；", ";"):

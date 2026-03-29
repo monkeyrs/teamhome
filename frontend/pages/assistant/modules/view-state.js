@@ -1,6 +1,6 @@
 const GRAPH_STAGE_ORDER = [
   "prepare",
-  "loop_queue",
+  "loop_guard",
   "schedule_subgraph",
   "expense_subgraph",
   "collect_result",
@@ -15,7 +15,7 @@ const GRAPH_NODE_DEFINITIONS = [
     tone: "primary"
   },
   {
-    key: "loop_queue",
+    key: "loop_guard",
     titleKey: "graphQueue",
     descKey: "graphQueueDesc",
     tone: "blue"
@@ -59,16 +59,22 @@ function createEmptyAssistantGraphState() {
 
 function normalizeGraphState(input) {
   const source = input && typeof input === "object" ? input : {};
-  const highlightedStages = Array.isArray(source.highlighted_stages)
-    ? source.highlighted_stages.filter((item) => GRAPH_STAGE_ORDER.includes(item))
-    : [];
+  const rawHighlightedStages = Array.isArray(source.highlighted_stages)
+    ? source.highlighted_stages
+    : (Array.isArray(source.highlightedStages) ? source.highlightedStages : []);
+  const highlightedStages = rawHighlightedStages
+    .filter((item) => GRAPH_STAGE_ORDER.includes(item))
+    .filter((item, index, items) => items.indexOf(item) === index);
+  const rawNextNodes = Array.isArray(source.next_nodes)
+    ? source.next_nodes
+    : (Array.isArray(source.nextNodes) ? source.nextNodes : []);
   return {
     available: !!source.available,
-    threadId: source.thread_id || "",
-    threadStatus: source.thread_status || "",
+    threadId: source.thread_id || source.threadId || "",
+    threadStatus: source.thread_status || source.threadStatus || "",
     highlightedStages,
-    nextNodes: Array.isArray(source.next_nodes) ? source.next_nodes.filter(Boolean) : [],
-    updatedAt: source.updated_at || ""
+    nextNodes: rawNextNodes.filter(Boolean),
+    updatedAt: source.updated_at || source.updatedAt || ""
   };
 }
 
@@ -206,6 +212,7 @@ module.exports = {
   buildAssistantGraphNodes,
   createEmptyAssistantGraphState,
   createInitialData,
+  normalizeGraphState,
   translate,
   formatAnswerStatus,
   quickReplyText,

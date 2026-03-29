@@ -517,6 +517,23 @@
   gap: 18rpx;
 }
 
+.assistant-graph-header {
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.assistant-graph-title {
+  font-size: 34rpx;
+  line-height: 1.2;
+}
+
+.assistant-graph-meta {
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
 .graph-row {
   display: flex;
   align-items: stretch;

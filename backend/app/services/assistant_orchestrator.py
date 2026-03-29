@@ -47,7 +47,7 @@ STATUS_EXECUTED = "executed"
 STATUS_CANCELLED = "cancelled"
 STATUS_UNSUPPORTED = "unsupported"
 
-MAX_PLAN_STEPS = 5
+MAX_PLAN_STEPS = 10
 MAX_LOOP_COUNT = 10
 GRAPH_SESSION_VERSION = "queue_v3"
 SESSION_MODE_CONVERSATION = "conversation"
@@ -77,7 +77,7 @@ _LANGGRAPH_THREAD_NAMESPACE = uuid.UUID("2f6b44cd-9cf9-4027-9c73-bca142f2d128")
 _GRAPH_SESSION_FACTORIES: dict[str, sessionmaker] = {}
 _LANGGRAPH_STAGE_ORDER = (
     "prepare",
-    "loop_queue",
+    "loop_guard",
     "schedule_subgraph",
     "expense_subgraph",
     "collect_result",
@@ -85,9 +85,9 @@ _LANGGRAPH_STAGE_ORDER = (
 )
 _LANGGRAPH_STAGE_MAP = {
     "prepare": "prepare",
-    "loop_guard": "loop_queue",
-    "dequeue_task": "loop_queue",
-    "route_subgraph": "loop_queue",
+    "loop_guard": "loop_guard",
+    "dequeue_task": "loop_guard",
+    "route_subgraph": "loop_guard",
     "schedule_subgraph": "schedule_subgraph",
     "expense_subgraph": "expense_subgraph",
     "collect_result": "collect_result",
@@ -313,25 +313,59 @@ def _map_langgraph_nodes_to_stages(node_names: list[str]) -> list[str]:
     return [stage for stage in _LANGGRAPH_STAGE_ORDER if stage in mapped]
 
 
+def _normalize_highlighted_stages(stages: list[str]) -> list[str]:
+    present = {stage for stage in stages if stage in _LANGGRAPH_STAGE_ORDER}
+    if not present:
+        return []
+    present.add("prepare")
+    if present - {"prepare"}:
+        present.add("loop_guard")
+    return [stage for stage in _LANGGRAPH_STAGE_ORDER if stage in present]
+
+
 def _graph_stage_fallback_from_response(response: dict) -> list[str]:
-    status = _normalize_optional_text((response or {}).get("status")) or ""
-    if status == STATUS_EXECUTED:
-        return ["commit_batch"]
-    if status in {STATUS_COLLECTING, "blocked", "awaiting_confirmation"}:
-        return ["collect_result"]
-    return []
+    payload = response if isinstance(response, dict) else {}
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    status = _normalize_optional_text(payload.get("status")) or ""
+    result_items = data.get("results") if isinstance(data.get("results"), list) else []
+    intents: list[str] = []
+    for item in result_items:
+        if isinstance(item, dict):
+            intent = _normalize_optional_text(item.get("intent"))
+            if intent:
+                intents.append(intent)
+    direct_intent = _normalize_optional_text(payload.get("intent"))
+    if direct_intent:
+        intents.append(direct_intent)
+
+    stages: list[str] = []
+    if any(intent in {INTENT_QUERY_FINANCE, INTENT_CREATE_FINANCE} for intent in intents):
+        stages.append("expense_subgraph")
+    if any(intent in {INTENT_QUERY_SCHEDULE, INTENT_CREATE_SCHEDULE} for intent in intents):
+        stages.append("schedule_subgraph")
+    if stages or status in {STATUS_COLLECTING, STATUS_EXECUTED, STATUS_UNSUPPORTED, STATUS_CANCELLED, "blocked", "awaiting_confirmation", "collecting_conflict_update"}:
+        stages.append("collect_result")
+    if status == STATUS_EXECUTED and any(intent in MUTATING_INTENTS for intent in intents):
+        stages.append("commit_batch")
+    return _normalize_highlighted_stages(stages)
 
 
 def _build_langgraph_visual_state(*, thread_id: str, thread: dict | None, state: dict | None) -> dict:
     thread_payload = thread if isinstance(thread, dict) else {}
     state_payload = state if isinstance(state, dict) else {}
+    history_payload = []
     raw_nodes = _collect_langgraph_state_nodes(state_payload)
+    if isinstance(state_payload.get("history"), list):
+        history_payload = state_payload.get("history") or []
+    for item in history_payload:
+        raw_nodes.extend(_collect_langgraph_state_nodes(item))
     next_nodes = [item for item in state_payload.get("next") or [] if _normalize_optional_text(item)]
+    highlighted_stages = _normalize_highlighted_stages(_map_langgraph_nodes_to_stages(raw_nodes))
     return {
         "available": True,
         "thread_id": thread_id,
         "thread_status": _normalize_optional_text(thread_payload.get("status")) or "",
-        "highlighted_stages": _map_langgraph_nodes_to_stages(raw_nodes),
+        "highlighted_stages": highlighted_stages,
         "next_nodes": next_nodes,
         "updated_at": _normalize_optional_text(thread_payload.get("updated_at"))
         or _normalize_optional_text(state_payload.get("created_at"))
@@ -339,10 +373,23 @@ def _build_langgraph_visual_state(*, thread_id: str, thread: dict | None, state:
     }
 
 
+def _get_langgraph_history_states(thread_id: str, *, limit: int = 24) -> list[dict]:
+    payload = _post_langgraph_json(f"/threads/{thread_id}/history", {"limit": max(1, min(limit, 100))})
+    if isinstance(payload, dict):
+        output = payload.get("output")
+        if isinstance(output, list):
+            return [item for item in output if isinstance(item, dict)]
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    return []
+
+
 def _get_langgraph_visual_state(thread_id: str) -> dict:
     thread = _get_langgraph_json(f"/threads/{thread_id}")
     state = _get_langgraph_json(f"/threads/{thread_id}/state")
-    return _build_langgraph_visual_state(thread_id=thread_id, thread=thread, state=state)
+    state_payload = dict(state) if isinstance(state, dict) else {}
+    state_payload["history"] = _get_langgraph_history_states(thread_id)
+    return _build_langgraph_visual_state(thread_id=thread_id, thread=thread, state=state_payload)
 
 
 def _attach_langgraph_visual_state(response: dict, *, thread_id: str) -> dict:
@@ -363,6 +410,32 @@ def _attach_langgraph_visual_state(response: dict, *, thread_id: str) -> dict:
     data["graph_state"] = graph_state
     response["data"] = data
     return response
+
+
+def get_assistant_graph_state(*, session_id: str | None) -> dict:
+    token = _normalize_optional_text(session_id)
+    if not token:
+        return {
+            "available": False,
+            "thread_id": "",
+            "thread_status": "",
+            "highlighted_stages": [],
+            "next_nodes": [],
+            "updated_at": "",
+        }
+
+    thread_id = _resolve_langgraph_thread_id(token)
+    try:
+        return _get_langgraph_visual_state(thread_id)
+    except Exception:
+        return {
+            "available": False,
+            "thread_id": thread_id,
+            "thread_status": "",
+            "highlighted_stages": [],
+            "next_nodes": [],
+            "updated_at": "",
+        }
 
 
 def _normalize_text(text: str) -> str:
@@ -575,10 +648,11 @@ def _term_set_preview(name: str) -> str:
 def _planner_examples() -> str:
     return "\n".join(
         [
-            'Q: "本月花了多少钱" -> {"steps":[{"intent":"query_finance"}],"need_split":false}',
-            'Q: "明天有什么安排" -> {"steps":[{"intent":"query_schedule"}],"need_split":false}',
-            'Q: "记一笔排练室费用 300" -> {"steps":[{"intent":"create_finance"}],"need_split":false}',
-            'Q: "明晚八点排练" -> {"steps":[{"intent":"create_schedule"}],"need_split":false}',
+            'Q: "本月花了多少钱" -> {"steps":[{"intent":"query_finance","source_text":"本月花了多少钱","question":"本月花了多少钱","label":"本月"}],"need_split":false}',
+            'Q: "明天有什么安排" -> {"steps":[{"intent":"query_schedule","source_text":"明天有什么安排","label":"明天"}],"need_split":false}',
+            'Q: "记一笔排练室费用 300" -> {"steps":[{"intent":"create_finance","source_text":"记一笔排练室费用 300","amount":300,"type":"expense","category":"排练","note":"记一笔排练室费用 300"}],"need_split":false}',
+            'Q: "明晚八点排练" -> {"steps":[{"intent":"create_schedule","source_text":"明晚八点排练","title":"排练","start_time":"2026-03-30T20:00:00+08:00","end_time":"2026-03-30T21:00:00+08:00"}],"need_split":false}',
+            'Q: "昨天去太平洋市场买菜花了6块，停车花了十块" -> {"steps":[{"intent":"create_finance","source_text":"昨天去太平洋市场买菜花了6块","amount":6,"type":"expense","category":"餐费","occurred_at":"2026-03-28T12:00:00+08:00","note":"昨天去太平洋市场买菜花了6块"},{"intent":"create_finance","source_text":"停车花了十块","amount":10,"type":"expense","category":"交通","occurred_at":"2026-03-28T12:00:00+08:00","note":"停车花了十块"}],"need_split":false}',
             'Q: "你好" -> {"steps":[],"need_split":false}',
         ]
     )
@@ -862,6 +936,131 @@ def _plan_intents(message: str, *, history: list[dict] | None = None) -> tuple[l
     return (fallback or [INTENT_UNSUPPORTED], False)
 
 
+def _normalize_planned_amount(value: object) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_planned_datetime(value: object) -> dt.datetime | None:
+    if isinstance(value, dt.datetime):
+        return value
+    text = _normalize_optional_text(value)
+    if not text:
+        return None
+    return _parse_iso_datetime(text)
+
+
+def _planned_slots_from_item(intent: str, item: dict, source_text: str) -> dict:
+    if intent == INTENT_CREATE_FINANCE:
+        category = _normalize_finance_category_value(item.get("category"))
+        return {
+            "amount": _normalize_planned_amount(item.get("amount")),
+            "type": _normalize_optional_text(item.get("type")),
+            "category": None if category == "other" else category,
+            "occurred_at": _normalize_planned_datetime(item.get("occurred_at")),
+            "note": _normalize_optional_text(item.get("note")) or source_text,
+        }
+    if intent == INTENT_CREATE_SCHEDULE:
+        return {
+            "title": _normalize_optional_text(item.get("title")),
+            "start_time": _normalize_planned_datetime(item.get("start_time")),
+            "end_time": _normalize_planned_datetime(item.get("end_time")),
+            "is_all_day": bool(item.get("is_all_day")),
+        }
+    if intent == INTENT_QUERY_FINANCE:
+        return {
+            "question": _normalize_optional_text(item.get("question")) or source_text,
+            "window_start": _normalize_planned_datetime(item.get("window_start")),
+            "window_end": _normalize_planned_datetime(item.get("window_end")),
+            "label": _normalize_optional_text(item.get("label")),
+        }
+    if intent == INTENT_QUERY_SCHEDULE:
+        return {
+            "window_start": _normalize_planned_datetime(item.get("window_start")),
+            "window_end": _normalize_planned_datetime(item.get("window_end")),
+            "label": _normalize_optional_text(item.get("label")),
+        }
+    return {}
+
+
+def _sanitize_planned_step_items(message: str, raw_steps: list[object]) -> list[dict]:
+    sanitized_steps: list[dict] = []
+    full_message = _normalize_text(message)
+    for item in raw_steps:
+        if isinstance(item, dict):
+            intent = item.get("intent")
+            source_text = _normalize_optional_text(item.get("source_text")) or full_message
+        else:
+            intent = item
+            source_text = full_message
+        sanitized_intents = _sanitize_planned_intents(source_text, [intent] if intent else [])
+        if not sanitized_intents or sanitized_intents == [INTENT_UNSUPPORTED]:
+            continue
+        resolved_intent = sanitized_intents[0]
+        step_payload = {"intent": resolved_intent, "source_text": source_text or full_message}
+        if isinstance(item, dict):
+            step_payload["slots"] = _planned_slots_from_item(resolved_intent, item, source_text or full_message)
+        sanitized_steps.append(step_payload)
+    return sanitized_steps
+
+
+def _plan_step_items(message: str, *, history: list[dict] | None = None) -> tuple[list[dict], bool]:
+    text = _normalize_text(message)
+    if not text:
+        return [], False
+
+    client = get_llm_client()
+    if not client:
+        return [], False
+
+    sysdate = _local_now().strftime("%Y-%m-%d %H:%M:%S %z")
+    system = (
+        "You are a task planner for a team assistant.\n"
+        f"Now={sysdate}\n"
+        "Split the user message into ordered actionable items and extract structured fields.\n"
+        "Infer item boundaries even when punctuation is missing, informal, or ASR-style.\n"
+        "Each item must map to exactly one intent from: create_finance, query_finance, create_schedule, query_schedule.\n"
+        "Keep source_text short and specific to that item, in the user's original language.\n"
+        "For finance items, extract amount, type, category, occurred_at, and note.\n"
+        "For schedule items, extract title, start_time, end_time, and is_all_day when applicable.\n"
+        "For query items, extract label and date window if explicit.\n"
+        "If a later item omits time/date but clearly shares temporal context with a previous item, inherit that temporal context.\n"
+        "Example: '昨天买菜6块，停车10块' means both finance items happened yesterday.\n"
+        "Set note to the original wording of that item, not a rewritten summary.\n"
+        "Datetime fields must be ISO8601 with timezone when you can infer them reliably.\n"
+        "Do not merge separate finance or schedule items into one step.\n"
+        "If the message is just greeting/small talk, return steps=[].\n"
+        f"If it truly needs more than {MAX_PLAN_STEPS} actions, set need_split=true.\n"
+        f"Examples:\n{_planner_examples()}\n"
+        'JSON schema: {"steps":[{"intent":"create_finance|query_finance|create_schedule|query_schedule","source_text":"...","amount":number|null,"type":"income|expense|null","category":string|null,"occurred_at":"ISO8601|null","note":string|null,"title":string|null,"start_time":"ISO8601|null","end_time":"ISO8601|null","is_all_day":boolean|null,"question":string|null,"window_start":"ISO8601|null","window_end":"ISO8601|null","label":string|null}],"need_split":false}'
+    )
+    user = (
+        f"history:\n{_planner_history_preview(history)}\n"
+        f"message:\n{text}"
+    )
+    try:
+        data = client.chat_json(system=system, user=user, max_tokens=700, allow_auto_switch=False) or {}
+    except Exception:
+        return [], False
+
+    if bool(data.get("need_split")):
+        return [], True
+    raw_steps = data.get("steps") or []
+    if not isinstance(raw_steps, list):
+        return [], False
+
+    items = _sanitize_planned_step_items(text, raw_steps)
+    if len(items) > MAX_PLAN_STEPS:
+        return [], True
+    if len(items) > 1 and {item.get("source_text") for item in items} == {text}:
+        return [], False
+    return items, False
+
+
 def _required_slots(intent: str) -> list[str]:
     if intent == INTENT_CREATE_FINANCE:
         return ["amount", "type"]
@@ -934,6 +1133,37 @@ def _merge_slots(intent: str, current_slots: dict, incoming_slots: dict) -> dict
     return _with_default_schedule_end(merged) if intent == INTENT_CREATE_SCHEDULE else merged
 
 
+def _has_explicit_temporal_hint(text: str) -> bool:
+    pattern = (
+        r"(今|明|后|昨|前)天|这周|本周|下周|下下周|周[一二三四五六日天末]|星期[一二三四五六日天]|"
+        r"\d{1,4}[/-]\d{1,2}(?:[/-]\d{1,2})?|(?:\d{1,4}年)?\d{1,2}月\d{1,2}[日号]?|"
+        r"上午|下午|晚上|中午|凌晨|\d{1,2}点(?:半|\d{1,2}分)?"
+    )
+    return bool(re.search(pattern, _normalize_text(text)))
+
+
+def _propagate_adjacent_temporal_context(steps: list[dict]) -> list[dict]:
+    propagated: list[dict] = []
+    previous_finance_occurred_at: dt.datetime | None = None
+    for step in steps:
+        current = dict(step)
+        intent = current.get("intent")
+        slots = _deserialize_slots(intent, current.get("slots", {}))
+        source_text = _normalize_text(current.get("source_text") or "")
+
+        if intent == INTENT_CREATE_FINANCE:
+            if previous_finance_occurred_at is not None and not _has_explicit_temporal_hint(source_text):
+                slots["occurred_at"] = previous_finance_occurred_at
+            if isinstance(slots.get("occurred_at"), dt.datetime):
+                previous_finance_occurred_at = slots["occurred_at"]
+        else:
+            previous_finance_occurred_at = None
+
+        current["slots"] = _serialize_slots(intent, slots)
+        propagated.append(current)
+    return propagated
+
+
 def _missing_slots(intent: str, slots: dict) -> list[str]:
     missing: list[str] = []
     for key in _required_slots(intent):
@@ -973,6 +1203,15 @@ def _build_confirmation_reply(steps: list[dict], locale: str) -> str:
     return "\n".join(lines)
 
 
+def _split_composite_fragment(fragment: str) -> list[str]:
+    parts = [part.strip() for part in re.split(r"[，,、]+", fragment) if part and part.strip()]
+    if len(parts) <= 1:
+        return [fragment]
+    if all(_heuristic_intents(part) != [INTENT_UNSUPPORTED] for part in parts):
+        return parts
+    return [fragment]
+
+
 def _split_message_fragments(message: str) -> list[str]:
     text = _normalize_text(message).replace("\r\n", "\n").replace("\r", "\n")
     if not text:
@@ -982,11 +1221,11 @@ def _split_message_fragments(message: str) -> list[str]:
         stripped_line = line.strip()
         if not stripped_line:
             continue
-        parts = re.split(r"(?<=[。！？!?；;])\s*", stripped_line)
+        parts = re.split(r"[。！？!?；;]+\s*", stripped_line)
         for part in parts:
             fragment = part.strip()
             if fragment:
-                fragments.append(fragment)
+                fragments.extend(_split_composite_fragment(fragment))
     return fragments
 
 
@@ -1002,6 +1241,31 @@ def _make_initial_steps(intents: list[str], message: str, locale: str, *, source
 
 
 def _plan_steps_from_text(message: str, *, locale: str, history: list[dict] | None = None) -> tuple[list[dict] | None, dict | None]:
+    planned_items, need_split = _plan_step_items(message, history=history)
+    if need_split:
+        return None, _build_response(
+            reply=translate(locale, "assistant.too_many_steps", count=MAX_PLAN_STEPS),
+            status=STATUS_UNSUPPORTED,
+            intent=INTENT_UNSUPPORTED,
+            session_id=None,
+            data=_response_data(can_undo=False),
+        )
+    if planned_items:
+        steps: list[dict] = []
+        for item in planned_items:
+            intent = item["intent"]
+            source_text = item.get("source_text") or message
+            extracted_slots = _extract_slots_for_intent(intent, source_text, locale, current_slots=None)
+            llm_slots = dict(item.get("slots") or {})
+            merged_slots = _merge_slots(intent, extracted_slots, llm_slots)
+            steps.append({
+                "intent": intent,
+                "slots": _serialize_slots(intent, merged_slots),
+                "source_text": source_text,
+            })
+        steps = _propagate_adjacent_temporal_context(steps)
+        return steps, None
+
     intents, need_split = _plan_intents(message, history=history)
     if need_split:
         return None, _build_response(
@@ -1032,6 +1296,7 @@ def _plan_graph_steps(message: str, *, locale: str, history: list[dict] | None =
             return None, response
         steps = planned_steps or []
 
+    steps = _propagate_adjacent_temporal_context(steps)
     if not steps:
         return None, _build_response(
             reply=translate(locale, "assistant.unsupported"),
@@ -1540,8 +1805,12 @@ def _load_or_initialize_graph_session(
 
 
 def _graph_prepare(state: AssistantGraphState) -> AssistantGraphState:
-    if state.get("response"):
-        return state
+    # LangGraph threads persist state across runs, so clear transient runtime fields
+    # before planning the next incoming message on the same thread.
+    state["response"] = None
+    state["step_result"] = {}
+    state["incoming_message"] = None
+    state["route"] = "prepare"
 
     db = state.get("db")
     owns_db = db is None
@@ -2066,6 +2335,10 @@ def _execute_assistant_langgraph(
             "locale": locale,
             "message": message,
             "session_id": thread_id,
+            "response": None,
+            "step_result": None,
+            "incoming_message": None,
+            "route": None,
         },
         "metadata": {
             "team_id": str(team_id),

@@ -192,9 +192,9 @@
     </view>
 
     <view class="card graph-card assistant-graph-card">
-      <view class="section-header">
-        <view class="section-title">{{graphI18n.graphTitle}}</view>
-        <view class="section-meta">{{graphI18n.graphMeta}}</view>
+      <view class="section-header assistant-graph-header">
+        <view class="section-title assistant-graph-title">{{graphI18n.graphTitle}}</view>
+        <view class="section-meta assistant-graph-meta">{{graphI18n.graphMeta}}</view>
       </view>
 
       <view class="graph-row">

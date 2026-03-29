@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -16,6 +17,7 @@ from app.crud.team import can_read_team
 from app.schemas.assistant import AssistantExecuteIn, AssistantExecuteOut, AssistantUndoIn
 from app.services.assistant_orchestrator import (
     execute_assistant,
+    get_assistant_graph_state,
     get_orchestration_debug,
     message_requires_write_access,
     undo_last_assistant_batch,
@@ -124,6 +126,18 @@ def undo(
             detail=translate(locale, "assistant.internal_error"),
         ) from exc
     return AssistantExecuteOut(**result)
+
+
+@router.get("/graph-state")
+def graph_state(
+    team_id: uuid.UUID,
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> dict:
+    if not can_read_team(db, team_id=team_id, user_id=current_user.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a team member")
+    return {"graph_state": get_assistant_graph_state(session_id=session_id)}
 
 
 @router.get("/orchestration")
