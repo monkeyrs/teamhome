@@ -12,37 +12,43 @@ const GRAPH_NODE_DEFINITIONS = [
     key: "prepare",
     titleKey: "graphPrepare",
     descKey: "graphPrepareDesc",
-    tone: "primary"
+    tone: "primary",
+    idlePhase: "1"
   },
   {
     key: "loop_guard",
     titleKey: "graphQueue",
     descKey: "graphQueueDesc",
-    tone: "blue"
+    tone: "blue",
+    idlePhase: "2"
   },
   {
     key: "schedule_subgraph",
     titleKey: "graphSchedule",
     descKey: "graphScheduleDesc",
-    tone: "green"
+    tone: "green",
+    idlePhase: "3"
   },
   {
     key: "expense_subgraph",
     titleKey: "graphExpense",
     descKey: "graphExpenseDesc",
-    tone: "orange"
+    tone: "orange",
+    idlePhase: "4"
   },
   {
     key: "collect_result",
     titleKey: "graphCollect",
     descKey: "graphCollectDesc",
-    tone: "violet"
+    tone: "violet",
+    idlePhase: "5"
   },
   {
     key: "commit_batch",
     titleKey: "graphCommit",
     descKey: "graphCommitDesc",
-    tone: "dark"
+    tone: "dark",
+    idlePhase: "6"
   }
 ];
 
@@ -87,7 +93,7 @@ function buildAssistantGraphNodes(graphState, graphI18n) {
     desc: graphI18n[item.descKey] || "",
     className: highlighted.has(item.key)
       ? `graph-node graph-node-${item.tone}`
-      : "graph-node graph-node-muted"
+      : `graph-node graph-node-muted graph-node-idle graph-node-idle-${item.tone} graph-node-idle-phase-${item.idlePhase}`
   }));
 }
 
@@ -129,6 +135,7 @@ function createInitialData() {
     firstMissingSlot: "",
     assistantGraphState: createEmptyAssistantGraphState(),
     assistantGraphNodes: buildAssistantGraphNodes(createEmptyAssistantGraphState(), {}),
+    assistantGraphPulseActive: false,
     locale: "zh-CN",
     localeMenuOpen: false,
     languageOptions: [],

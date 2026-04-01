@@ -180,6 +180,25 @@ Page({
     }
   },
 
+  stopGraphPulse() {
+    if (this._graphPulseTimer) {
+      clearTimeout(this._graphPulseTimer);
+      this._graphPulseTimer = null;
+    }
+    if (this.data.assistantGraphPulseActive) {
+      this.setData({ assistantGraphPulseActive: false });
+    }
+  },
+
+  triggerGraphPulse() {
+    this.stopGraphPulse();
+    this.setData({ assistantGraphPulseActive: true });
+    this._graphPulseTimer = setTimeout(() => {
+      this._graphPulseTimer = null;
+      this.setData({ assistantGraphPulseActive: false });
+    }, 950);
+  },
+
   stopGraphStatePolling() {
     if (this._graphStatePollingTimer) {
       clearTimeout(this._graphStatePollingTimer);
@@ -234,11 +253,13 @@ Page({
   onHide() {
     this.stopProcessingIndicator();
     this.stopGraphStatePolling();
+    this.stopGraphPulse();
   },
 
   onUnload() {
     this.stopProcessingIndicator();
     this.stopGraphStatePolling();
+    this.stopGraphPulse();
   },
 
   applyLocale() {
@@ -280,10 +301,11 @@ Page({
     this.setData({ loading: true });
     try {
       const { teamId, teams, user, realTeams, demoTeams, capabilities } = await bootstrapSession();
+      const profileUser = user || (((getApp() || {}).globalData || {}).user) || null;
       const teamIndex = resolveTeamIndex(teams, teamId);
       const visibilityMap = getTeamPasswordVisibilityMap(this.data.teams);
       this.setData({
-        ...buildProfileState(user),
+        ...buildProfileState(profileUser),
         canUseNicknameInput: wx.canIUse("input.type.nickname"),
         teams: decorateTeams(teams, visibilityMap, (path) => this.t(path)),
         realTeams: realTeams || [],
@@ -651,6 +673,7 @@ Page({
     this._ignoredRequestTokens.add(this._activeRequestToken);
     this.stopProcessingIndicator();
     this.stopGraphStatePolling();
+    this.stopGraphPulse();
     this.setData({
       loading: false,
       assistantConversationSessionId: "",
@@ -680,6 +703,9 @@ Page({
     }
 
     this.ensureRequestTracking();
+    const isIdleGraphState = !this.data.loading
+      && !this.data.answer
+      && !((this.data.assistantGraphState && this.data.assistantGraphState.highlightedStages) || []).length;
     const continueMutation = !!this.data.assistantMutationSessionId && this.data.answerStatus === "collecting";
     const sessionId = continueMutation
       ? this.data.assistantMutationSessionId
@@ -687,6 +713,9 @@ Page({
 
     const requestToken = createRequestToken();
     this._activeRequestToken = requestToken;
+    if (isIdleGraphState) {
+      this.triggerGraphPulse();
+    }
     this.setData({ loading: true });
     this.startProcessingIndicator(sessionId);
     this.scheduleGraphStatePolling(team.id, sessionId, requestToken);

@@ -2,10 +2,48 @@ import decimal
 import datetime as dt
 import uuid
 
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.finance import FinanceRecord
+
+
+ASSISTANT_DUPLICATE_WINDOW_SECONDS = 180
+
+
+def find_recent_duplicate_finance_record(
+    db: Session,
+    *,
+    team_id: uuid.UUID,
+    user_id: uuid.UUID,
+    amount: decimal.Decimal,
+    record_type: str,
+    category: str,
+    occurred_at: dt.datetime,
+    location: str | None,
+    note: str | None,
+    within_seconds: int = ASSISTANT_DUPLICATE_WINDOW_SECONDS,
+) -> FinanceRecord | None:
+    created_after = dt.datetime.now(dt.timezone.utc) - dt.timedelta(seconds=max(within_seconds, 1))
+    normalized_location = location or ""
+    normalized_note = note or ""
+    return (
+        db.query(FinanceRecord)
+        .filter(
+            FinanceRecord.team_id == team_id,
+            FinanceRecord.user_id == user_id,
+            FinanceRecord.amount == amount,
+            FinanceRecord.type == record_type,
+            FinanceRecord.category == category,
+            FinanceRecord.occurred_at == occurred_at,
+            or_(FinanceRecord.location == location, func.coalesce(FinanceRecord.location, "") == normalized_location),
+            or_(FinanceRecord.note == note, func.coalesce(FinanceRecord.note, "") == normalized_note),
+            FinanceRecord.deleted_at.is_(None),
+            FinanceRecord.created_at >= created_after,
+        )
+        .order_by(FinanceRecord.created_at.desc())
+        .first()
+    )
 
 
 def create_finance_record(

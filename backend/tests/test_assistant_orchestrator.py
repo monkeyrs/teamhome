@@ -1,5 +1,7 @@
 import datetime as dt
 import unittest
+import uuid
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.services import assistant_orchestrator
@@ -53,6 +55,47 @@ class AssistantOrchestratorTests(unittest.TestCase):
         self.assertEqual(slots["label"], "上月")
         self.assertEqual(slots["window_start"], dt.datetime(2026, 2, 1, 0, 0, tzinfo=now.tzinfo))
         self.assertEqual(slots["window_end"], dt.datetime(2026, 3, 1, 0, 0, tzinfo=now.tzinfo))
+
+    def test_execute_step_reuses_recent_duplicate_finance_record(self):
+        occurred_at = dt.datetime(2026, 3, 31, 12, 0, tzinfo=dt.timezone.utc)
+        duplicate = SimpleNamespace(
+            id=uuid.uuid4(),
+            amount=assistant_orchestrator.decimal.Decimal("5.40"),
+            type="expense",
+            category="餐费",
+            occurred_at=occurred_at,
+            location=None,
+            note="昨天买菜，西红柿花了5块4",
+        )
+        step = {
+            "intent": assistant_orchestrator.INTENT_CREATE_FINANCE,
+            "slots": {
+                "amount": 5.4,
+                "type": "expense",
+                "category": "餐费",
+                "occurred_at": occurred_at.isoformat(),
+                "note": "昨天买菜，西红柿花了5块4",
+            },
+            "source_text": "昨天买菜，西红柿花了5块4",
+        }
+
+        with (
+            patch("app.services.assistant_orchestrator.find_recent_duplicate_finance_record", return_value=duplicate) as find_mock,
+            patch("app.services.assistant_orchestrator.create_finance_record") as create_mock,
+        ):
+            result = assistant_orchestrator._execute_step(
+                object(),
+                step=step,
+                team_id=uuid.uuid4(),
+                user_id=uuid.uuid4(),
+                locale="zh-CN",
+            )
+
+        self.assertEqual(result["status"], assistant_orchestrator.STATUS_EXECUTED)
+        self.assertEqual(result["data"]["record_id"], str(duplicate.id))
+        self.assertTrue(result["data"]["deduplicated"])
+        find_mock.assert_called_once()
+        create_mock.assert_not_called()
 
 
     def test_build_langgraph_visual_state_maps_writes_and_next_nodes(self):

@@ -514,10 +514,23 @@
 }
 
 .assistant-graph-card {
+  position: relative;
+  overflow: hidden;
   gap: 18rpx;
 }
 
+.assistant-graph-card-idle {
+  background:
+    radial-gradient(circle at 18% 14%, rgba(255, 255, 255, 0.94) 0%, rgba(244, 247, 251, 0.98) 36%, rgba(236, 241, 247, 1) 100%);
+}
+
+.assistant-graph-card-pulse {
+  animation: graph-card-pulse-flash 920ms ease-out 1;
+}
+
 .assistant-graph-header {
+  position: relative;
+  z-index: 2;
   align-items: flex-start;
   justify-content: flex-start;
   flex-direction: column;
@@ -534,10 +547,85 @@
   line-height: 1.45;
 }
 
+.graph-idle-ambient {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 4;
+}
+
+.graph-idle-orb {
+  position: absolute;
+  top: 30%;
+  left: 24%;
+  width: 22rpx;
+  height: 22rpx;
+  margin-top: -11rpx;
+  margin-left: -11rpx;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.98) 0%, rgba(125, 211, 252, 0.92) 38%, rgba(96, 165, 250, 0.24) 78%, rgba(96, 165, 250, 0) 100%);
+  box-shadow: 0 0 22rpx rgba(147, 197, 253, 0.88), 0 0 58rpx rgba(125, 211, 252, 0.5);
+  opacity: 0.94;
+  animation: graph-idle-orb-path 15s cubic-bezier(0.45, 0.05, 0.32, 0.99) infinite;
+}
+
+.graph-idle-halo {
+  position: absolute;
+  top: 30%;
+  left: 24%;
+  width: 260rpx;
+  height: 260rpx;
+  margin-top: -130rpx;
+  margin-left: -130rpx;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(191, 219, 254, 0.26) 0%, rgba(186, 230, 253, 0.1) 42%, rgba(255, 255, 255, 0) 76%);
+  filter: blur(10rpx);
+  opacity: 0.9;
+  animation: graph-idle-halo-path 15s ease-in-out infinite;
+}
+
+.graph-idle-halo-soft {
+  animation-delay: -2s;
+}
+
+.graph-pulse-burst {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.graph-pulse-core,
+.graph-pulse-wave {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.graph-pulse-core {
+  width: 34rpx;
+  height: 34rpx;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.98) 0%, rgba(191, 219, 254, 0.94) 34%, rgba(96, 165, 250, 0.24) 78%, rgba(96, 165, 250, 0) 100%);
+  box-shadow: 0 0 24rpx rgba(147, 197, 253, 0.88), 0 0 72rpx rgba(125, 211, 252, 0.52);
+  animation: graph-pulse-core-pop 920ms ease-out forwards;
+}
+
+.graph-pulse-wave {
+  width: 220rpx;
+  height: 220rpx;
+  background: radial-gradient(circle, rgba(191, 219, 254, 0.22) 0%, rgba(147, 197, 253, 0.16) 34%, rgba(191, 219, 254, 0) 72%);
+  animation: graph-pulse-wave-expand 920ms cubic-bezier(0.17, 0.84, 0.44, 1) forwards;
+}
+
 .graph-row {
   display: flex;
   align-items: stretch;
   gap: 16rpx;
+  position: relative;
+  z-index: 2;
 }
 
 .graph-row-connector {
@@ -625,6 +713,76 @@
   color: #334155;
 }
 
+.assistant-graph-card-idle .graph-node-idle {
+  animation: graph-node-idle-breathe 14s ease-in-out infinite;
+}
+
+.assistant-graph-card-idle .graph-node-idle-phase-1 {
+  animation-delay: 0s;
+}
+
+.assistant-graph-card-idle .graph-node-idle-phase-2 {
+  animation-delay: 2.2s;
+}
+
+.assistant-graph-card-idle .graph-node-idle-phase-3 {
+  animation-delay: 4.4s;
+}
+
+.assistant-graph-card-idle .graph-node-idle-phase-4 {
+  animation-delay: 6.6s;
+}
+
+.assistant-graph-card-idle .graph-node-idle-phase-5 {
+  animation-delay: 8.8s;
+}
+
+.assistant-graph-card-idle .graph-node-idle-phase-6 {
+  animation-delay: 11s;
+}
+
+.assistant-graph-card-idle .graph-node-idle-primary {
+  --graph-idle-start: #163a6b;
+  --graph-idle-end: #24539a;
+  --graph-idle-glow: rgba(36, 83, 154, 0.24);
+  --graph-idle-text: #ffffff;
+}
+
+.assistant-graph-card-idle .graph-node-idle-blue {
+  --graph-idle-start: #2b6cb0;
+  --graph-idle-end: #3f8cff;
+  --graph-idle-glow: rgba(63, 140, 255, 0.24);
+  --graph-idle-text: #ffffff;
+}
+
+.assistant-graph-card-idle .graph-node-idle-green {
+  --graph-idle-start: #138a5d;
+  --graph-idle-end: #20b26c;
+  --graph-idle-glow: rgba(32, 178, 108, 0.22);
+  --graph-idle-text: #ffffff;
+}
+
+.assistant-graph-card-idle .graph-node-idle-orange {
+  --graph-idle-start: #d97706;
+  --graph-idle-end: #f5a623;
+  --graph-idle-glow: rgba(245, 166, 35, 0.22);
+  --graph-idle-text: #ffffff;
+}
+
+.assistant-graph-card-idle .graph-node-idle-violet {
+  --graph-idle-start: #6d4bd1;
+  --graph-idle-end: #8b5cf6;
+  --graph-idle-glow: rgba(139, 92, 246, 0.22);
+  --graph-idle-text: #ffffff;
+}
+
+.assistant-graph-card-idle .graph-node-idle-dark {
+  --graph-idle-start: #1f2937;
+  --graph-idle-end: #374151;
+  --graph-idle-glow: rgba(55, 65, 81, 0.22);
+  --graph-idle-text: #ffffff;
+}
+
 .graph-node-primary {
   background: linear-gradient(135deg, #163a6b 0%, #24539a 100%);
   color: #ffffff;
@@ -667,6 +825,15 @@
   color: rgba(255, 255, 255, 0.82);
 }
 
+.graph-node-primary .graph-node-desc,
+.graph-node-blue .graph-node-desc,
+.graph-node-green .graph-node-desc,
+.graph-node-orange .graph-node-desc,
+.graph-node-violet .graph-node-desc,
+.graph-node-dark .graph-node-desc {
+  color: #ffffff;
+}
+
 .graph-node-muted .graph-node-desc {
   color: rgba(51, 65, 85, 0.82);
 }
@@ -677,6 +844,8 @@
   align-items: center;
   gap: 14rpx;
   flex-wrap: wrap;
+  position: relative;
+  z-index: 2;
 }
 
 .graph-pill {
@@ -696,4 +865,145 @@
   min-width: 0;
   font-size: 23rpx;
   color: var(--text-secondary);
+}
+
+@keyframes graph-idle-orb-path {
+  0% {
+    left: 24%;
+    top: 30%;
+    transform: scale(0.9);
+    opacity: 0.24;
+  }
+  14% {
+    left: 76%;
+    top: 30%;
+    transform: scale(1);
+    opacity: 0.92;
+  }
+  28% {
+    left: 76%;
+    top: 30%;
+    transform: scale(0.92);
+    opacity: 0.74;
+  }
+  42% {
+    left: 24%;
+    top: 53%;
+    transform: scale(1.08);
+    opacity: 0.88;
+  }
+  56% {
+    left: 76%;
+    top: 53%;
+    transform: scale(0.94);
+    opacity: 0.68;
+  }
+  72% {
+    left: 24%;
+    top: 76%;
+    transform: scale(1.04);
+    opacity: 0.82;
+  }
+  90% {
+    left: 76%;
+    top: 76%;
+    transform: scale(0.9);
+    opacity: 0.56;
+  }
+  100% {
+    left: 24%;
+    top: 30%;
+    transform: scale(0.9);
+    opacity: 0.24;
+  }
+}
+
+@keyframes graph-idle-halo-path {
+  0%,
+  100% {
+    left: 24%;
+    top: 30%;
+    transform: scale(0.92);
+    opacity: 0.38;
+  }
+  28% {
+    left: 76%;
+    top: 30%;
+    transform: scale(1.02);
+    opacity: 0.64;
+  }
+  56% {
+    left: 76%;
+    top: 53%;
+    transform: scale(1.08);
+    opacity: 0.4;
+  }
+  82% {
+    left: 24%;
+    top: 76%;
+    transform: scale(0.98);
+    opacity: 0.56;
+  }
+}
+
+@keyframes graph-node-idle-breathe {
+  0%,
+  14%,
+  100% {
+    background: linear-gradient(135deg, #e5e7eb 0%, #cbd5e1 100%);
+    color: #334155;
+    box-shadow: inset 0 0 0 1rpx rgba(255, 255, 255, 0.16);
+    transform: translateY(0);
+  }
+  4%,
+  9% {
+    background: linear-gradient(135deg, var(--graph-idle-start) 0%, var(--graph-idle-end) 100%);
+    color: var(--graph-idle-text);
+    box-shadow:
+      inset 0 0 0 1rpx rgba(255, 255, 255, 0.34),
+      0 12rpx 26rpx var(--graph-idle-glow);
+    transform: translateY(-2rpx);
+  }
+}
+
+@keyframes graph-pulse-core-pop {
+  0% {
+    opacity: 0.98;
+    transform: translate(-50%, -50%) scale(0.55);
+  }
+  45% {
+    opacity: 0.88;
+    transform: translate(-50%, -50%) scale(1.35);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.8);
+  }
+}
+
+@keyframes graph-pulse-wave-expand {
+  0% {
+    opacity: 0.16;
+    transform: translate(-50%, -50%) scale(0.18);
+  }
+  36% {
+    opacity: 0.28;
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(6.2);
+  }
+}
+
+@keyframes graph-card-pulse-flash {
+  0% {
+    box-shadow: 0 0 0 rgba(125, 211, 252, 0);
+  }
+  28% {
+    box-shadow: 0 0 0 2rpx rgba(147, 197, 253, 0.26), 0 0 110rpx rgba(125, 211, 252, 0.22);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(125, 211, 252, 0);
+  }
 }

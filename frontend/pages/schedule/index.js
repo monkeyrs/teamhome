@@ -91,6 +91,11 @@ Page({
     }
   },
 
+  onLoad() {
+    this.pendingDeleteDayKey = "";
+    this.pendingDeleteRowHeight = 0;
+  },
+
   onPageScroll(event) {
     this.refreshStickyDay(event && typeof event.scrollTop === "number" ? event.scrollTop : 0);
   },
@@ -134,7 +139,8 @@ Page({
       categorySuggestions: this.buildCategorySuggestions(
         this.data.financeForm.category,
         this.data.financeForm.type
-      )
+      ),
+      activeStickyDay: null
     }, () => {
       this.rebuildStickyDayAnchors();
     });
@@ -238,7 +244,8 @@ Page({
     const days = Array.isArray(data && data.days) ? data.days : [];
     this.setData({
       days,
-      visibleDays: this.buildVisibleDays(days, this.data.activeKindFilter)
+      visibleDays: this.buildVisibleDays(days, this.data.activeKindFilter),
+      activeStickyDay: null
     });
     wx.nextTick(() => {
       this.rebuildStickyDayAnchors();
@@ -281,17 +288,46 @@ Page({
     });
   },
 
+  dayKeyToTime(dayKey) {
+    const time = new Date(`${dayKey || ""}T00:00:00`).getTime();
+    return Number.isFinite(time) ? time : 0;
+  },
+
+  resolveTimelineAnchorDays() {
+    return this.data.visibleDays || [];
+  },
+
+  resolveNearestTimelineDayKey(targetDayKey, days) {
+    if (!Array.isArray(days) || !days.length) return "";
+    const targetTime = this.dayKeyToTime(targetDayKey);
+    let nearestDayKey = days[0].day_key;
+    let nearestDistance = Infinity;
+    let nearestDelta = Infinity;
+
+    days.forEach((day) => {
+      const dayTime = this.dayKeyToTime(day.day_key);
+      const delta = dayTime - targetTime;
+      const distance = Math.abs(delta);
+      const shouldReplace = distance < nearestDistance || (
+        distance === nearestDistance &&
+        ((nearestDelta < 0 && delta >= 0) || (nearestDelta >= 0 && delta >= 0 && delta < nearestDelta))
+      );
+      if (!shouldReplace) return;
+      nearestDayKey = day.day_key;
+      nearestDistance = distance;
+      nearestDelta = delta;
+    });
+
+    return nearestDayKey;
+  },
+
   getTodayAnchorId() {
     const today = formatDate(new Date());
-    const visibleDays = this.data.visibleDays || [];
-    const exact = visibleDays.find((day) => day.day_key === today);
-    if (exact) return `day-${exact.day_key}`;
-    for (let index = visibleDays.length - 1; index >= 0; index -= 1) {
-      if (visibleDays[index].day_key <= today) {
-        return `day-${visibleDays[index].day_key}`;
-      }
-    }
-    return visibleDays.length ? `day-${visibleDays[0].day_key}` : "";
+    const anchorDays = this.resolveTimelineAnchorDays();
+    if (!anchorDays.length) return "";
+    const exact = anchorDays.find((day) => day.day_key === today);
+    const dayKey = exact ? exact.day_key : this.resolveNearestTimelineDayKey(today, anchorDays);
+    return dayKey ? `day-${dayKey}` : "";
   },
 
   scrollToTodayAnchor() {
@@ -361,7 +397,9 @@ Page({
     wx.nextTick(() => this.scrollToDay(dayKey));
   },
 
-  scrollToDay(dayKey) {
+  scrollToDay(dayKey, options = {}) {
+    const duration = typeof options.duration === "number" ? options.duration : 220;
+    const silent = !!options.silent;
     const anchorId = `day-${dayKey}`;
     const query = wx.createSelectorQuery();
     query.select(`#${anchorId}`).boundingClientRect();
@@ -370,12 +408,56 @@ Page({
       const rect = res && res[0];
       const viewport = res && res[1];
       if (!rect || !viewport) {
-        wx.showToast({ title: this.t("page.dayNotLoaded"), icon: "none" });
+        if (!silent) {
+          wx.showToast({ title: this.t("page.dayNotLoaded"), icon: "none" });
+        }
         return;
       }
       const top = Math.max((viewport.scrollTop || 0) + rect.top - DAY_RAIL_STICKY_TOP, 0);
-      wx.pageScrollTo({ scrollTop: top, duration: 220 });
+      wx.pageScrollTo({ scrollTop: top, duration });
       this.refreshStickyDay(top);
+    });
+  },
+
+  captureDeleteContext(item, dayKey = "") {
+    this.pendingDeleteDayKey = dayKey || "";
+    this.pendingDeleteRowHeight = 0;
+    if (!item || !item.rowDomId) return;
+
+    const query = wx.createSelectorQuery();
+    query.select(`#${item.rowDomId}`).boundingClientRect();
+    query.exec((res) => {
+      const rect = Array.isArray(res) ? res[0] : null;
+      if (!rect || !rect.height) return;
+      this.pendingDeleteRowHeight = rect.height + 8;
+    });
+  },
+
+  compensateScrollAfterDelete(deletedDayKey = "") {
+    const visibleDays = this.data.visibleDays || [];
+    const rowHeight = Number(this.pendingDeleteRowHeight || 0);
+    this.pendingDeleteRowHeight = 0;
+
+    if (rowHeight > 0) {
+      const query = wx.createSelectorQuery();
+      query.selectViewport().scrollOffset();
+      query.exec((res) => {
+        const viewport = Array.isArray(res) ? res[0] : null;
+        if (!viewport) return;
+        const nextTop = Math.max((viewport.scrollTop || 0) - rowHeight, 0);
+        wx.pageScrollTo({ scrollTop: nextTop, duration: 0 });
+        this.refreshStickyDay(nextTop);
+      });
+      return;
+    }
+
+    if (!visibleDays.length || !deletedDayKey) return;
+    const targetDayKey = visibleDays.some((day) => day.day_key === deletedDayKey)
+      ? deletedDayKey
+      : this.resolveNearestTimelineDayKey(deletedDayKey, visibleDays);
+    if (!targetDayKey) return;
+    wx.nextTick(() => {
+      this.scrollToDay(targetDayKey, { duration: 0, silent: true });
     });
   },
 
@@ -460,7 +542,8 @@ Page({
     this.setData({
       activeKindFilter: nextFilter,
       isFilterOpen: false,
-      visibleDays: this.buildVisibleDays(this.data.days, nextFilter)
+      visibleDays: this.buildVisibleDays(this.data.days, nextFilter),
+      activeStickyDay: null
     }, () => {
       this.rebuildStickyDayAnchors();
     });
@@ -498,11 +581,12 @@ Page({
     this.loadPlaceSuggestions((this.currentTeam() || {}).id, "");
   },
 
-  openScheduleEditor(item) {
+  openScheduleEditor(item, dayKey = "") {
     if (this.currentTeamReadonly()) {
       this.showReadonlyTip();
       return;
     }
+    this.captureDeleteContext(item, dayKey);
     this.setData(buildScheduleEditComposerState(item));
     this.loadPlaceSuggestions((this.currentTeam() || {}).id, item.location || "");
   },
@@ -516,11 +600,12 @@ Page({
     this.loadPlaceSuggestions((this.currentTeam() || {}).id, item.location || "");
   },
 
-  openFinanceEditor(item) {
+  openFinanceEditor(item, dayKey = "") {
     if (this.currentTeamReadonly()) {
       this.showReadonlyTip();
       return;
     }
+    this.captureDeleteContext(item, dayKey);
     const type = item.kind === "income" ? "income" : "expense";
     const category = item.category || "";
     this.setData(buildFinanceEditComposerState(
@@ -544,6 +629,8 @@ Page({
   },
 
   closeComposer() {
+    this.pendingDeleteDayKey = "";
+    this.pendingDeleteRowHeight = 0;
     this.setData(buildComposerClosedState(new Date()));
   },
 
@@ -588,7 +675,7 @@ Page({
     const date = event.detail.value;
     this.setData({
       "scheduleForm.date": date,
-      "scheduleForm.end_date": this.data.scheduleForm.end_date || date
+      "scheduleForm.end_date": date
     });
   },
 
@@ -597,7 +684,11 @@ Page({
   },
 
   onScheduleEndDateChange(event) {
-    this.setData({ "scheduleForm.end_date": event.detail.value });
+    const endDate = event.detail.value;
+    const startDate = this.data.scheduleForm.date;
+    this.setData({
+      "scheduleForm.end_date": !startDate || endDate >= startDate ? endDate : startDate
+    });
   },
 
   onScheduleEndTimeChange(event) {
@@ -674,6 +765,36 @@ Page({
     });
   },
 
+  removeDeletedItemLocally(editingId, composerKind, deletedDayKey = "") {
+    const targetId = `${editingId || ""}`;
+    if (!targetId) return;
+
+    const nextDays = (this.data.days || [])
+      .map((day) => ({
+        ...day,
+        items: (day.items || []).filter((item) => {
+          if (`${item.source_id || ""}` !== targetId) {
+            return true;
+          }
+          if (composerKind === "schedule") {
+            return item.kind !== "schedule";
+          }
+          return false;
+        })
+      }))
+      .filter((day) => Array.isArray(day.items) && day.items.length);
+
+    this.daySectionAnchors = [];
+    this.setData({
+      days: nextDays,
+      visibleDays: this.buildVisibleDays(nextDays, this.data.activeKindFilter),
+      activeStickyDay: null
+    }, () => {
+      this.rebuildStickyDayAnchors();
+      this.compensateScrollAfterDelete(deletedDayKey);
+    });
+  },
+
   async submitComposer() {
     if (this.currentTeamReadonly()) {
       this.showReadonlyTip();
@@ -702,9 +823,9 @@ Page({
     const item = day && day.items[itemIndex];
     if (!item) return;
     if (item.kind === "schedule") {
-      this.openScheduleEditor(item);
+      this.openScheduleEditor(item, day.day_key);
     } else {
-      this.openFinanceEditor(item);
+      this.openFinanceEditor(item, day.day_key);
     }
   },
 
@@ -815,7 +936,10 @@ Page({
       t: this.t.bind(this),
       api: scheduleApi,
       closeComposer: this.closeComposer.bind(this),
-      afterMutation: this.afterMutation.bind(this)
+      afterMutation: this.afterMutation.bind(this),
+      onDeleteSuccess: ({ editingId, composerKind }) => {
+        this.removeDeletedItemLocally(editingId, composerKind, this.pendingDeleteDayKey);
+      }
     });
   },
 

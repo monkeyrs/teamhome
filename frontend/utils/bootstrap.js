@@ -60,6 +60,7 @@ async function ensureTeam() {
       realTeams,
       demoTeams,
       currentEntry: null,
+      user: app.globalData.user || null,
       capabilities: {
         hasRealTeams: false,
         hasDemoTeams: false,

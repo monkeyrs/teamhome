@@ -11,7 +11,6 @@ $RootDir = Resolve-Path (Join-Path $ScriptDir "..")
 $ComposeFile = Join-Path $RootDir "docker-compose.yml"
 $EnvFile = Join-Path $RootDir "backend\\.env"
 $HealthUrl = "http://127.0.0.1:$Port/openapi.json"
-$GraphHealthUrl = "http://127.0.0.1:22024/docs"
 
 $OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $env:PYTHONUTF8 = "1"
@@ -57,6 +56,15 @@ function Get-DotEnvValue {
     $value = $value.Substring(1, $value.Length - 2)
   }
   return $value
+}
+
+function Set-ComposeEnvironment {
+  $env:POSTGRES_DB = Get-DotEnvValue -Key "POSTGRES_DB" -Default "teamhome"
+  $env:POSTGRES_USER = Get-DotEnvValue -Key "POSTGRES_USER" -Default "admin"
+  $env:POSTGRES_PASSWORD = Get-DotEnvValue -Key "POSTGRES_PASSWORD" -Default "admin"
+  $defaultDatabaseUrl = "postgresql+psycopg2://$($env:POSTGRES_USER):$($env:POSTGRES_PASSWORD)@db:5432/$($env:POSTGRES_DB)"
+  $env:DATABASE_URL = Get-DotEnvValue -Key "DATABASE_URL" -Default $defaultDatabaseUrl
+  $env:LANGGRAPH_HOST_PORT = Get-DotEnvValue -Key "LANGGRAPH_HOST_PORT" -Default "22024"
 }
 
 function Test-BackendSecurityConfig {
@@ -222,16 +230,20 @@ function Show-Status {
     Write-Host "API health: unreachable ($HealthUrl)"
   }
   try {
-    $graphResp = Invoke-WebRequest -Uri $GraphHealthUrl -UseBasicParsing -TimeoutSec 5
+    $graphPort = Get-DotEnvValue -Key "LANGGRAPH_HOST_PORT" -Default "22024"
+    $graphHealthUrl = "http://127.0.0.1:$graphPort/docs"
+    $graphResp = Invoke-WebRequest -Uri $graphHealthUrl -UseBasicParsing -TimeoutSec 5
     Write-Host "LangGraph health: HTTP $($graphResp.StatusCode)"
   } catch {
-    Write-Host "LangGraph health: unreachable ($GraphHealthUrl)"
+    $graphPort = Get-DotEnvValue -Key "LANGGRAPH_HOST_PORT" -Default "22024"
+    Write-Host "LangGraph health: unreachable (http://127.0.0.1:$graphPort/docs)"
   }
 }
 
 try {
   Ensure-ComposeFile
   Ensure-Docker
+  Set-ComposeEnvironment
 
   switch ($Action) {
     "start" {

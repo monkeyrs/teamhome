@@ -72,7 +72,7 @@
       <view class="field-grid">
         <view class="field-group field-half">
           <view class="field-label">{{i18n.page.endDate}}</view>
-          <picker mode="date" value="{{scheduleForm.end_date}}" bindchange="onScheduleEndDateChange">
+          <picker mode="date" start="{{scheduleForm.date}}" value="{{scheduleForm.end_date}}" bindchange="onScheduleEndDateChange">
             <view class="picker {{scheduleForm.end_date ? '' : 'placeholder'}}">{{scheduleForm.end_date || i18n.page.selectDate}}</view>
           </picker>
         </view>
@@ -238,7 +238,7 @@
               </view>
 
               <block wx:for="{{day.items}}" wx:key="idKey" wx:for-item="entry" wx:for-index="itemIndex">
-                <view class="swipe-row">
+                <view class="swipe-row" id="{{entry.rowDomId}}">
                   <view class="edit-bg" style="width: {{entry.editWidth}}px;">
                     <view class="edit-action" data-day-index="{{dayIndex}}" data-item-index="{{itemIndex}}" bindtap="onTapEdit">{{i18n.common.edit}}</view>
                   </view>
@@ -255,30 +255,43 @@
                     bindtouchmove="onSwipeMove"
                     bindtouchend="onSwipeEnd"
                   >
-                    <view class="card timeline-card timeline-card-{{entry.kind}}">
-                      <view class="card-top">
-                        <view class="card-head">
-                          <view class="card-title">{{entry.titleText}}</view>
-                          <view class="kind-pill kind-pill-{{entry.kind}}">{{entry.kindLabel}}</view>
-                        </view>
-                        <view wx:if="{{entry.amountText}}" class="amount-text amount-text-{{entry.kind}}">{{entry.amountText}}</view>
+                    <view class="card timeline-card timeline-card-{{entry.kind}} {{entry.isMiddleSegment ? 'timeline-card-compact' : ''}} {{entry.isMultiDaySchedule ? entry.multiDayCardClass : ''}}">
+                      <view class="schedule-segment-rail" wx:if="{{entry.isMultiDaySchedule}}">
+                        <view class="schedule-segment-line schedule-segment-line-top {{entry.hasSegmentBefore ? 'schedule-segment-line-on ' + entry.scheduleLineClass : ''}}"></view>
+                        <view class="schedule-segment-node {{entry.scheduleNodeClass}}"></view>
+                        <view class="schedule-segment-line schedule-segment-line-bottom {{entry.hasSegmentAfter ? 'schedule-segment-line-on ' + entry.scheduleLineClass : ''}}"></view>
                       </view>
 
-                      <view class="meta-row">
-                        <view class="meta-chip">{{entry.subtitleText}}</view>
-                        <view class="meta-chip meta-chip-category meta-chip-category-{{entry.kind}}" wx:if="{{entry.metaSecondaryText}}">{{entry.metaSecondaryText}}</view>
+                      <view wx:if="{{entry.isMiddleSegment}}" class="schedule-compact-row">
+                        <view class="schedule-compact-title {{entry.scheduleCompactTitleClass}}">{{entry.titleText}}</view>
+                        <view class="kind-pill kind-pill-{{entry.kind}} schedule-compact-pill">{{entry.kindLabel}}</view>
                       </view>
 
-                      <view class="detail-grid" wx:if="{{entry.hasLocation || entry.hasNote}}">
-                        <view class="detail-cell" wx:if="{{entry.hasLocation}}">
-                          <view class="detail-label">{{i18n.page.place}}</view>
-                          <view class="detail-value">{{entry.locationText}}</view>
+                      <block wx:else>
+                        <view class="card-top">
+                          <view class="card-head">
+                            <view class="card-title">{{entry.titleText}}</view>
+                            <view class="kind-pill kind-pill-{{entry.kind}}">{{entry.kindLabel}}</view>
+                          </view>
+                          <view wx:if="{{entry.amountText}}" class="amount-text amount-text-{{entry.kind}}">{{entry.amountText}}</view>
                         </view>
-                        <view class="detail-cell detail-cell-full" wx:if="{{entry.hasNote}}">
-                          <view class="detail-label">{{i18n.page.note}}</view>
-                          <view class="detail-value">{{entry.noteText}}</view>
+
+                        <view class="meta-row">
+                          <view class="meta-chip">{{entry.subtitleText}}</view>
+                          <view class="meta-chip meta-chip-category meta-chip-category-{{entry.kind}}" wx:if="{{entry.metaSecondaryText}}">{{entry.metaSecondaryText}}</view>
                         </view>
-                      </view>
+
+                        <view class="detail-grid" wx:if="{{entry.hasLocation || entry.hasNote}}">
+                          <view class="detail-cell" wx:if="{{entry.hasLocation}}">
+                            <view class="detail-label">{{i18n.page.place}}</view>
+                            <view class="detail-value">{{entry.locationText}}</view>
+                          </view>
+                          <view class="detail-cell detail-cell-full" wx:if="{{entry.hasNote}}">
+                            <view class="detail-label">{{i18n.page.note}}</view>
+                            <view class="detail-value">{{entry.noteText}}</view>
+                          </view>
+                        </view>
+                      </block>
                     </view>
                   </view>
                 </view>
@@ -292,6 +305,8 @@
         <view class="empty-title">{{i18n.page.emptyTitle}}</view>
         <view class="empty-text">{{i18n.page.emptyText}}</view>
       </view>
+
+      <view class="timeline-tail-spacer" wx:if="{{visibleDays.length}}"></view>
     </view>
   </view>
 

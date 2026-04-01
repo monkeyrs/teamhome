@@ -18,6 +18,16 @@ page {
   --radius-card: 24rpx;
   --radius-control: 16rpx;
   --radius-pill: 999rpx;
+  /* Nintendo-style motion tokens */
+  --easing-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --easing-spring: cubic-bezier(0.22, 1.2, 0.36, 1);
+  --easing-pop: cubic-bezier(0.18, 0.89, 0.32, 1.28);
+  --easing-soft: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --duration-fast: 120ms;
+  --duration-normal: 240ms;
+  --duration-slow: 420ms;
+  --color-success: #07c160;
+  --color-success-soft: #eaf8f0;
   background: var(--bg-page);
   color: var(--text-regular);
   font-size: 30rpx;
@@ -265,4 +275,182 @@ button::after {
   margin-top: 8rpx;
   font-size: 24rpx;
   color: var(--text-secondary);
+}
+
+/* ── Nintendo-style: Button press feedback ── */
+.btn-primary:active,
+.mini-action:active {
+  transform: scale(0.94);
+  transition: transform var(--duration-fast) var(--easing-bounce);
+}
+
+.btn-secondary:active,
+.surface-button:active,
+.input-control:active {
+  transform: scale(0.98);
+  transition: transform var(--duration-fast) var(--easing-soft);
+}
+
+/* ── Nintendo-style: Global animation library ── */
+
+/* Elastic bounce — for pop-in elements */
+@keyframes nintendo-bounce-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Spring overshoot — for cards/panels sliding up */
+@keyframes nintendo-spring-up {
+  0% {
+    opacity: 0;
+    transform: translateY(40rpx) scale(0.96);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-6rpx) scale(1.01);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Pop-in with fade — for answer cards, success pills */
+@keyframes nintendo-pop-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(20rpx) scale(0.92);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(-4rpx) scale(1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Success ripple — radial expand for create/save confirmations */
+@keyframes nintendo-success-ripple {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  40% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.5);
+  }
+}
+
+/* Shimmer sweep — subtle light sweep for emphasis */
+@keyframes nintendo-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+/* Float breathe — gentle floating for empty states */
+@keyframes nintendo-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12rpx);
+  }
+}
+
+/* Pulse glow — for active states */
+@keyframes nintendo-pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(7, 193, 96, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 12rpx rgba(7, 193, 96, 0);
+  }
+}
+
+/* Processing dots — bouncing dots for loading */
+@keyframes nintendo-dot-bounce {
+  0%, 80%, 100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-10rpx);
+  }
+}
+
+/* Bar grow — for chart bars growing from 0 */
+@keyframes nintendo-bar-grow {
+  0% {
+    transform: scaleX(0);
+    transform-origin: left center;
+  }
+  60% {
+    transform: scaleX(1.02);
+    transform-origin: left center;
+  }
+  100% {
+    transform: scaleX(1);
+    transform-origin: left center;
+  }
+}
+
+/* Column grow — for vertical charts growing from bottom */
+@keyframes nintendo-column-grow {
+  0% {
+    transform: scaleY(0);
+    transform-origin: bottom center;
+  }
+  60% {
+    transform: scaleY(1.04);
+    transform-origin: bottom center;
+  }
+  100% {
+    transform: scaleY(1);
+    transform-origin: bottom center;
+  }
+}
+
+/* Hint shimmy — subtle side-to-side for discoverability hints */
+@keyframes nintendo-hint-shimmy {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-6rpx);
+  }
+  75% {
+    transform: translateX(6rpx);
+  }
+}
+
+/* Stagger entrance helper — use with inline style animation-delay */
+.nintendo-stagger {
+  opacity: 0;
+  animation: nintendo-pop-fade var(--duration-slow) var(--easing-spring) forwards;
+}
+
+/* FAB rotation for plus/close toggle */
+@keyframes nintendo-fab-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(135deg);
+  }
 }

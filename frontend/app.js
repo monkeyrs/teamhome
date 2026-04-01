@@ -1,4 +1,4 @@
-const { DEFAULT_LOCALE, applyTabBarLocale, normalizeLocale } = require("./utils/i18n");
+﻿const { DEFAULT_LOCALE, applyTabBarLocale, normalizeLocale } = require("./utils/i18n");
 const defaultConfig = require("./config/default");
 
 let localConfig = {};

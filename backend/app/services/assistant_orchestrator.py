@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.config import get_settings
 from app.core.i18n import RELATIVE_DAY_TERMS, TERM_SETS, normalize_locale, translate
-from app.crud.finance import create_finance_record, list_finance_records
+from app.crud.finance import create_finance_record, find_recent_duplicate_finance_record, list_finance_records
 from app.crud.schedule import create_schedule, list_schedules
 from app.crud.team import can_read_team, can_write_team, is_team_member
 from app.models.finance import FinanceRecord
@@ -1507,6 +1507,42 @@ def _execute_step(db: Session, *, step: dict, team_id: uuid.UUID, user_id: uuid.
         if isinstance(occurred_at, str):
             occurred_at = _parse_iso_datetime(occurred_at)
         category = _normalize_optional_text(slots.get("category")) or translate(locale, "assistant.not_categorized")
+        resolved_occurred_at = occurred_at or dt.datetime.now(dt.timezone.utc)
+        resolved_location = _normalize_optional_text(slots.get("location"))
+        resolved_note = _normalize_optional_text(slots.get("note"))
+        duplicate = find_recent_duplicate_finance_record(
+            db,
+            team_id=team_id,
+            user_id=user_id,
+            amount=amount,
+            record_type=slots["type"],
+            category=category,
+            occurred_at=resolved_occurred_at,
+            location=resolved_location,
+            note=resolved_note,
+        )
+        if duplicate:
+            return {
+                "status": STATUS_EXECUTED,
+                "intent": intent,
+                "reply": translate(
+                    locale,
+                    "assistant.created_finance",
+                    record_type=translate(locale, f"assistant.record_type_{duplicate.type}"),
+                    category=duplicate.category,
+                    amount=_format_amount(duplicate.amount),
+                ),
+                "data": {
+                    "record_id": str(duplicate.id),
+                    "amount": _format_amount(duplicate.amount),
+                    "type": duplicate.type,
+                    "category": duplicate.category,
+                    "occurred_at": duplicate.occurred_at.isoformat() if getattr(duplicate, "occurred_at", None) else None,
+                    "location": duplicate.location,
+                    "note": duplicate.note,
+                    "deduplicated": True,
+                },
+            }
         record = create_finance_record(
             db,
             team_id=team_id,
@@ -1514,11 +1550,11 @@ def _execute_step(db: Session, *, step: dict, team_id: uuid.UUID, user_id: uuid.
             amount=amount,
             record_type=slots["type"],
             category=category,
-            occurred_at=occurred_at,
-            location=_normalize_optional_text(slots.get("location")),
+            occurred_at=resolved_occurred_at,
+            location=resolved_location,
             location_latitude=None,
             location_longitude=None,
-            note=_normalize_optional_text(slots.get("note")),
+            note=resolved_note,
         )
         return {
             "status": STATUS_EXECUTED,

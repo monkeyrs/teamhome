@@ -296,6 +296,30 @@ DEMO_TEAM_SPECS = [
                 "end": "2026-03-28T23:30:00+08:00",
                 "created_by": "demo-teamhome-monke",
             },
+            {
+                "title": "备案通过正式上线",
+                "description": "完成备案收口后切正式环境，发布生产版本。",
+                "location": "远程协作",
+                "start": "2026-03-30T10:00:00+08:00",
+                "end": "2026-03-30T12:00:00+08:00",
+                "created_by": "demo-teamhome-monke",
+            },
+            {
+                "title": "修 bug",
+                "description": "3月31日至4月2日集中修复上线后反馈的问题并做回归确认。",
+                "location": "远程协作",
+                "start": "2026-03-31T10:00:00+08:00",
+                "end": "2026-04-02T19:00:00+08:00",
+                "created_by": "demo-teamhome-ning",
+            },
+            {
+                "title": "跨天日程 UI 优化",
+                "description": "4月1日至4月2日优化跨天日程在时间线中的展示和交互。",
+                "location": "远程协作",
+                "start": "2026-04-01T10:00:00+08:00",
+                "end": "2026-04-02T18:00:00+08:00",
+                "created_by": "demo-teamhome-yue",
+            },
         ],
         "finance": [
             {

@@ -191,10 +191,19 @@
       <view class="muted answer-data" wx:if="{{answerDataText}}">{{answerDataText}}</view>
     </view>
 
-    <view class="card graph-card assistant-graph-card">
+    <view class="card graph-card assistant-graph-card {{!assistantGraphState.highlightedStages.length && !loading && !answer ? 'assistant-graph-card-idle' : ''}} {{assistantGraphPulseActive ? 'assistant-graph-card-pulse' : ''}}">
       <view class="section-header assistant-graph-header">
         <view class="section-title assistant-graph-title">{{graphI18n.graphTitle}}</view>
         <view class="section-meta assistant-graph-meta">{{graphI18n.graphMeta}}</view>
+      </view>
+
+      <view class="graph-idle-ambient" wx:if="{{!assistantGraphState.highlightedStages.length && !loading && !answer}}">
+        <view class="graph-idle-orb"></view>
+        <view class="graph-idle-halo graph-idle-halo-soft"></view>
+      </view>
+      <view class="graph-pulse-burst" wx:if="{{assistantGraphPulseActive}}">
+        <view class="graph-pulse-core"></view>
+        <view class="graph-pulse-wave"></view>
       </view>
 
       <view class="graph-row">

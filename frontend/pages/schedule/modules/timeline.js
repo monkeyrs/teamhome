@@ -1,10 +1,116 @@
 const {
+  addDays,
   compareDayKeysAsc,
   compareTimelineItemsAsc,
   formatClock,
   formatDate,
   parseDate
 } = require("./state");
+
+const SCHEDULE_COLOR_POOL_SIZE = 8;
+
+function startOfDay(date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function dayDiffInclusive(start, end) {
+  const diff = startOfDay(end).getTime() - startOfDay(start).getTime();
+  return Math.max(Math.floor(diff / (24 * 60 * 60 * 1000)), 0);
+}
+
+function buildMultiDayColorMap(days = []) {
+  const scheduleMap = new Map();
+  (days || []).forEach((day) => {
+    (day.items || []).forEach((item) => {
+      if (!item || item.kind !== "schedule" || !item.start_time || !item.end_time) return;
+      if (scheduleMap.has(`${item.source_id}`)) return;
+      const start = parseDate(item.start_time || item.occur_at);
+      const end = parseDate(item.end_time, start);
+      if (dayDiffInclusive(start, end) <= 0) return;
+      scheduleMap.set(`${item.source_id}`, {
+        sourceId: `${item.source_id}`,
+        startDay: startOfDay(start).getTime(),
+        endDay: startOfDay(end).getTime()
+      });
+    });
+  });
+
+  const schedules = Array.from(scheduleMap.values()).sort((left, right) => (
+    left.startDay - right.startDay ||
+    left.endDay - right.endDay ||
+    left.sourceId.localeCompare(right.sourceId)
+  ));
+
+  const colorMap = {};
+  let active = [];
+  schedules.forEach((schedule) => {
+    active = active.filter((item) => item.endDay >= schedule.startDay);
+    const used = new Set(active.map((item) => item.colorIndex));
+    let colorIndex = 0;
+    while (colorIndex < SCHEDULE_COLOR_POOL_SIZE && used.has(colorIndex)) {
+      colorIndex += 1;
+    }
+    if (colorIndex >= SCHEDULE_COLOR_POOL_SIZE) {
+      colorIndex %= SCHEDULE_COLOR_POOL_SIZE;
+    }
+    colorMap[schedule.sourceId] = colorIndex;
+    active.push({
+      endDay: schedule.endDay,
+      colorIndex
+    });
+  });
+  return colorMap;
+}
+
+function applyMultiDayColors(days = []) {
+  const colorMap = buildMultiDayColorMap(days);
+  return (days || []).map((day) => ({
+    ...day,
+    items: (day.items || []).map((item) => ({
+      ...item,
+      schedule_color_index: colorMap[`${item.source_id}`] ?? 0
+    }))
+  }));
+}
+
+function expandTimelineItems(items = []) {
+  const expanded = [];
+  (items || []).forEach((item) => {
+    if (item.kind !== "schedule" || !item.start_time || !item.end_time) {
+      expanded.push(item);
+      return;
+    }
+
+    const start = parseDate(item.start_time || item.occur_at);
+    const end = parseDate(item.end_time, start);
+    const spanDays = dayDiffInclusive(start, end);
+    if (spanDays <= 0) {
+      expanded.push(item);
+      return;
+    }
+
+    for (let offset = 0; offset <= spanDays; offset += 1) {
+      const currentDay = startOfDay(addDays(start, offset));
+      const displayDayKey = formatDate(currentDay);
+      let segmentRole = "middle";
+      if (offset === 0) {
+        segmentRole = "start";
+      } else if (offset === spanDays) {
+        segmentRole = "end";
+      }
+      expanded.push({
+        ...item,
+        display_day_key: displayDayKey,
+        schedule_segment_role: segmentRole,
+        schedule_segment_index: offset,
+        schedule_segment_days: spanDays + 1
+      });
+    }
+  });
+  return expanded;
+}
 
 function weekdayLabel(date, t) {
   const labels = [
@@ -34,6 +140,10 @@ function formatScheduleRange(item, t) {
 function normalizeTimelineItem(item, t) {
   const occurDate = parseDate(item.occur_at);
   const isSchedule = item.kind === "schedule";
+  const segmentRole = isSchedule ? (item.schedule_segment_role || "single") : "single";
+  const isMultiDaySchedule = isSchedule && segmentRole !== "single";
+  const isMiddleSegment = segmentRole === "middle";
+  const scheduleColorIndex = Number.isInteger(item.schedule_color_index) ? item.schedule_color_index : 0;
   const locationText = `${item.location || ""}`.trim();
   const noteText = `${item.note || item.description || ""}`.trim();
   const kindLabel = t(
@@ -48,9 +158,21 @@ function normalizeTimelineItem(item, t) {
     : "";
   return {
     ...item,
-    idKey: `${item.kind}-${item.source_id}`,
+    idKey: `${item.kind}-${item.source_id}-${item.display_day_key || item.occur_at || "single"}`,
+    rowDomId: `timeline-item-${item.kind}-${item.source_id}-${item.display_day_key || "single"}`,
     titleText: isSchedule ? (item.title || t("page.unnamedSchedule")) : (item.category || kindLabel),
     kindLabel,
+    segmentRole,
+    isMultiDaySchedule,
+    isMiddleSegment,
+    scheduleColorIndex,
+    multiDayCardClass: `timeline-card-with-rail timeline-card-schedule-color-${scheduleColorIndex}`,
+    scheduleCardClass: `timeline-card-schedule-color-${scheduleColorIndex}`,
+    scheduleLineClass: `schedule-segment-line-color-${scheduleColorIndex}`,
+    scheduleNodeClass: `schedule-segment-node-color-${scheduleColorIndex}`,
+    scheduleCompactTitleClass: `schedule-compact-title-color-${scheduleColorIndex}`,
+    hasSegmentBefore: segmentRole === "middle" || segmentRole === "end",
+    hasSegmentAfter: segmentRole === "start" || segmentRole === "middle",
     creatorName: item.creator_name || t("common.teamMember"),
     locationText,
     noteText,
@@ -84,7 +206,24 @@ function normalizeTimelineDay(day, items, t) {
 }
 
 function buildVisibleDays({ days = [], activeKindFilter = "", t }) {
-  return (days || [])
+  const coloredDays = applyMultiDayColors(days);
+  const grouped = {};
+  (coloredDays || []).forEach((day) => {
+    const expandedItems = expandTimelineItems(day.items || []);
+    expandedItems.forEach((item) => {
+      const dayKey = item.display_day_key || day.day_key;
+      if (!grouped[dayKey]) {
+        grouped[dayKey] = {
+          day_key: dayKey,
+          is_today: dayKey === day.day_key ? day.is_today : false,
+          items: []
+        };
+      }
+      grouped[dayKey].items.push(item);
+    });
+  });
+
+  return Object.values(grouped)
     .slice()
     .sort((left, right) => compareDayKeysAsc(left.day_key, right.day_key))
     .map((day) => {

@@ -125,6 +125,12 @@ run_demo_seed_if_auto() {
 }
 
 cd "${ROOT_DIR}"
+export POSTGRES_DB="$(read_env_value POSTGRES_DB teamhome)"
+export POSTGRES_USER="$(read_env_value POSTGRES_USER admin)"
+export POSTGRES_PASSWORD="$(read_env_value POSTGRES_PASSWORD admin)"
+default_database_url="postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
+export DATABASE_URL="$(read_env_value DATABASE_URL "${default_database_url}")"
+export LANGGRAPH_HOST_PORT="$(read_env_value LANGGRAPH_HOST_PORT 22024)"
 validate_backend_security_config
 docker compose up -d db
 docker compose build api langgraph
@@ -138,5 +144,5 @@ echo "Demo seed mode: $(read_demo_seed_mode)"
 curl -sS http://127.0.0.1:8000/openapi.json >/dev/null && echo "API health: OK" || echo "API health: FAILED"
 curl -sS http://127.0.0.1:8000/openapi.json | grep -q '"/timeline"' && echo "Timeline route: OK" || echo "Timeline route: MISSING"
 curl -sS http://127.0.0.1:8000/openapi.json | grep -q '"/teams"' && echo "Team bootstrap route: OK" || echo "Team bootstrap route: MISSING"
-curl -sS http://127.0.0.1:22024/docs >/dev/null && echo "LangGraph health: OK" || echo "LangGraph health: FAILED"
+curl -sS "http://127.0.0.1:${LANGGRAPH_HOST_PORT}/docs" >/dev/null && echo "LangGraph health: OK" || echo "LangGraph health: FAILED"
 docker compose logs --tail=120 api langgraph

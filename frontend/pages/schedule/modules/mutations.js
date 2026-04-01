@@ -73,7 +73,8 @@ async function confirmDeleteEditing({
   t,
   api,
   closeComposer,
-  afterMutation
+  afterMutation,
+  onDeleteSuccess
 }) {
   if (composerMode !== "edit" || !editingId || !team) return;
 
@@ -90,6 +91,12 @@ async function confirmDeleteEditing({
       await api.deleteSchedule(editingId);
     } else {
       await api.deleteFinance(editingId);
+    }
+    if (typeof onDeleteSuccess === "function") {
+      await onDeleteSuccess({
+        editingId,
+        composerKind
+      });
     }
     wx.showToast({ title: t("page.deleted"), icon: "success" });
     closeComposer();
