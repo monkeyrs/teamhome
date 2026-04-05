@@ -9,6 +9,9 @@ function resetSwipeItem(item) {
   item.offsetX = 0;
   item.leftActionWidth = 0;
   item.editWidth = 0;
+  item.leftActionScale = 0.86;
+  item.rightActionScale = 0.86;
+  item.swipeActionReady = false;
 }
 
 function closeSwipeRows(visibleDays = []) {
@@ -42,16 +45,24 @@ function buildSwipeMoveState({ visibleDays = [], dayIndex, itemIndex, deltaX, la
 
   if (deltaX < 0) {
     const offsetX = Math.max(deltaX + laziness, -maxSwipe);
+    const progress = Math.min(Math.abs(offsetX) / maxSwipe, 1);
     current.offsetX = offsetX;
     current.leftActionWidth = Math.min(Math.abs(offsetX), maxSwipe);
     current.editWidth = 0;
+    current.leftActionScale = 0.86 + (progress * 0.14);
+    current.rightActionScale = 0.86;
+    current.swipeActionReady = Math.abs(offsetX) >= maxSwipe * 0.72;
     return next;
   }
 
   const offsetX = Math.min(deltaX - laziness, maxSwipe);
+  const progress = Math.min(offsetX / maxSwipe, 1);
   current.offsetX = offsetX;
   current.editWidth = Math.min(offsetX, maxSwipe);
   current.leftActionWidth = 0;
+  current.leftActionScale = 0.86;
+  current.rightActionScale = 0.86 + (progress * 0.14);
+  current.swipeActionReady = offsetX >= maxSwipe * 0.72;
   return next;
 }
 
@@ -76,11 +87,11 @@ function resolveSwipeEnd({
   }
 
   if (current.offsetX <= -hardActionThreshold) {
-    return { action: "duplicate", visibleDays: closeSwipeRows(next) };
+    return { action: "delete", visibleDays: closeSwipeRows(next) };
   }
 
   if (current.offsetX >= hardActionThreshold) {
-    return { action: "edit", visibleDays: closeSwipeRows(next) };
+    return { action: "duplicate", visibleDays: closeSwipeRows(next) };
   }
 
   if (current.offsetX < 0) {

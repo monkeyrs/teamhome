@@ -402,6 +402,115 @@ RELATIVE_DAY_TERMS = {
 }
 
 
+FINANCE_CATEGORY_LABELS = {
+    "zh-CN": {
+        "food": "\u9910\u8d39",
+        "transport": "\u4ea4\u901a",
+        "rent": "\u623f\u79df",
+        "lodging": "\u4f4f\u5bbf",
+        "utilities": "\u6c34\u7535",
+        "shopping": "\u8d2d\u7269",
+        "entertainment": "\u5a31\u4e50",
+        "salary": "\u5de5\u8d44",
+        "reimbursement": "\u62a5\u9500",
+    },
+    "en-US": {
+        "food": "Food",
+        "transport": "Transport",
+        "rent": "Rent",
+        "lodging": "Lodging",
+        "utilities": "Utilities",
+        "shopping": "Shopping",
+        "entertainment": "Entertainment",
+        "salary": "Salary",
+        "reimbursement": "Reimbursement",
+    },
+    "ja-JP": {
+        "food": "\u98df\u8cbb",
+        "transport": "\u4ea4\u901a",
+        "rent": "\u5bb6\u8cc3",
+        "lodging": "\u5bbf\u6cca",
+        "utilities": "\u6c34\u9053\u5149\u71b1",
+        "shopping": "\u8cb7\u3044\u7269",
+        "entertainment": "\u5a2f\u697d",
+        "salary": "\u7d66\u4e0e",
+        "reimbursement": "\u7cbe\u7b97",
+    },
+}
+
+
+FINANCE_CATEGORY_ALIASES = {
+    "\u9910\u8d39": "food",
+    "food": "food",
+    "meal": "food",
+    "\u98df\u8cbb": "food",
+    "\u4ea4\u901a": "transport",
+    "transport": "transport",
+    "traffic": "transport",
+    "taxi": "transport",
+    "\u4ea4\u901a\u8cbb": "transport",
+    "\u623f\u79df": "rent",
+    "rent": "rent",
+    "\u5bb6\u8cc3": "rent",
+    "\u4f4f\u5bbf": "lodging",
+    "lodging": "lodging",
+    "hotel": "lodging",
+    "accommodation": "lodging",
+    "\u5bbf\u6cca": "lodging",
+    "\u6c34\u7535": "utilities",
+    "utilities": "utilities",
+    "\u6c34\u9053\u5149\u71b1": "utilities",
+    "\u8d2d\u7269": "shopping",
+    "shopping": "shopping",
+    "\u8cb7\u3044\u7269": "shopping",
+    "\u5a31\u4e50": "entertainment",
+    "entertainment": "entertainment",
+    "\u5a2f\u697d": "entertainment",
+    "\u5de5\u8d44": "salary",
+    "salary": "salary",
+    "\u7d66\u4e0e": "salary",
+    "\u62a5\u9500": "reimbursement",
+    "reimbursement": "reimbursement",
+    "\u7cbe\u7b97": "reimbursement",
+    "other": "other",
+}
+
+
+ASSISTANT_PLANNER_EXAMPLES = {
+    "zh-CN": [
+        'Q: "\u672c\u6708\u82b1\u4e86\u591a\u5c11\u94b1" -> {"steps":[{"intent":"query_finance","source_text":"\u672c\u6708\u82b1\u4e86\u591a\u5c11\u94b1","question":"\u672c\u6708\u82b1\u4e86\u591a\u5c11\u94b1","label":"\u672c\u6708"}],"need_split":false}',
+        'Q: "\u660e\u5929\u6709\u4ec0\u4e48\u5b89\u6392" -> {"steps":[{"intent":"query_schedule","source_text":"\u660e\u5929\u6709\u4ec0\u4e48\u5b89\u6392","label":"\u660e\u5929"}],"need_split":false}',
+        'Q: "\u8bb0\u4e00\u7b14\u6392\u7ec3\u5ba4\u8d39\u7528 300" -> {"steps":[{"intent":"create_finance","source_text":"\u8bb0\u4e00\u7b14\u6392\u7ec3\u5ba4\u8d39\u7528 300","amount":300,"type":"expense","category":"\u6392\u7ec3","note":"\u8bb0\u4e00\u7b14\u6392\u7ec3\u5ba4\u8d39\u7528 300"}],"need_split":false}',
+        'Q: "\u660e\u665a\u516b\u70b9\u6392\u7ec3" -> {"steps":[{"intent":"create_schedule","source_text":"\u660e\u665a\u516b\u70b9\u6392\u7ec3","title":"\u6392\u7ec3","start_time":"2026-03-30T20:00:00+08:00","end_time":"2026-03-30T21:00:00+08:00"}],"need_split":false}',
+        'Q: "\u6628\u5929\u53bb\u592a\u5e73\u6d0b\u5e02\u573a\u4e70\u83dc\u82b1\u4e866\u5757\uff0c\u505c\u8f66\u82b1\u4e86\u5341\u5757" -> {"steps":[{"intent":"create_finance","source_text":"\u6628\u5929\u53bb\u592a\u5e73\u6d0b\u5e02\u573a\u4e70\u83dc\u82b1\u4e866\u5757","amount":6,"type":"expense","category":"\u9910\u8d39","occurred_at":"2026-03-28T12:00:00+08:00","note":"\u6628\u5929\u53bb\u592a\u5e73\u6d0b\u5e02\u573a\u4e70\u83dc\u82b1\u4e866\u5757"},{"intent":"create_finance","source_text":"\u505c\u8f66\u82b1\u4e86\u5341\u5757","amount":10,"type":"expense","category":"\u4ea4\u901a","occurred_at":"2026-03-28T12:00:00+08:00","note":"\u505c\u8f66\u82b1\u4e86\u5341\u5757"}],"need_split":false}',
+        'Q: "\u4f60\u597d" -> {"steps":[],"need_split":false}',
+    ],
+    "en-US": [
+        'Q: "How much did I spend this month?" -> {"steps":[{"intent":"query_finance","source_text":"How much did I spend this month?","question":"How much did I spend this month?","label":"This month"}],"need_split":false}',
+        'Q: "What is on tomorrow?" -> {"steps":[{"intent":"query_schedule","source_text":"What is on tomorrow?","label":"Tomorrow"}],"need_split":false}',
+        'Q: "Record rehearsal room cost 300" -> {"steps":[{"intent":"create_finance","source_text":"Record rehearsal room cost 300","amount":300,"type":"expense","category":"rehearsal","note":"Record rehearsal room cost 300"}],"need_split":false}',
+        'Q: "Rehearsal tomorrow at 8pm" -> {"steps":[{"intent":"create_schedule","source_text":"Rehearsal tomorrow at 8pm","title":"Rehearsal","start_time":"2026-03-30T20:00:00+08:00","end_time":"2026-03-30T21:00:00+08:00"}],"need_split":false}',
+        'Q: "Yesterday I spent 6 on groceries and 10 on parking" -> {"steps":[{"intent":"create_finance","source_text":"Yesterday I spent 6 on groceries","amount":6,"type":"expense","category":"Food","occurred_at":"2026-03-28T12:00:00+08:00","note":"Yesterday I spent 6 on groceries"},{"intent":"create_finance","source_text":"and 10 on parking","amount":10,"type":"expense","category":"Transport","occurred_at":"2026-03-28T12:00:00+08:00","note":"and 10 on parking"}],"need_split":false}',
+        'Q: "Hello" -> {"steps":[],"need_split":false}',
+    ],
+    "ja-JP": [
+        'Q: "\u4eca\u6708\u306f\u3044\u304f\u3089\u4f7f\u3063\u305f\uff1f" -> {"steps":[{"intent":"query_finance","source_text":"\u4eca\u6708\u306f\u3044\u304f\u3089\u4f7f\u3063\u305f\uff1f","question":"\u4eca\u6708\u306f\u3044\u304f\u3089\u4f7f\u3063\u305f\uff1f","label":"\u4eca\u6708"}],"need_split":false}',
+        'Q: "\u660e\u65e5\u306e\u4e88\u5b9a\u306f\uff1f" -> {"steps":[{"intent":"query_schedule","source_text":"\u660e\u65e5\u306e\u4e88\u5b9a\u306f\uff1f","label":"\u660e\u65e5"}],"need_split":false}',
+        'Q: "\u7df4\u7fd2\u5ba4\u4ee3\u3092300\u8a18\u9332\u3057\u3066" -> {"steps":[{"intent":"create_finance","source_text":"\u7df4\u7fd2\u5ba4\u4ee3\u3092300\u8a18\u9332\u3057\u3066","amount":300,"type":"expense","category":"\u7df4\u7fd2","note":"\u7df4\u7fd2\u5ba4\u4ee3\u3092300\u8a18\u9332\u3057\u3066"}],"need_split":false}',
+        'Q: "\u660e\u65e5\u306e\u591c8\u6642\u306b\u7df4\u7fd2" -> {"steps":[{"intent":"create_schedule","source_text":"\u660e\u65e5\u306e\u591c8\u6642\u306b\u7df4\u7fd2","title":"\u7df4\u7fd2","start_time":"2026-03-30T20:00:00+08:00","end_time":"2026-03-30T21:00:00+08:00"}],"need_split":false}',
+        'Q: "\u6628\u65e5\u306f\u98df\u6750\u306b6\u3001\u99d0\u8eca\u306b10\u4f7f\u3063\u305f" -> {"steps":[{"intent":"create_finance","source_text":"\u6628\u65e5\u306f\u98df\u6750\u306b6\u4f7f\u3063\u305f","amount":6,"type":"expense","category":"\u98df\u8cbb","occurred_at":"2026-03-28T12:00:00+08:00","note":"\u6628\u65e5\u306f\u98df\u6750\u306b6\u4f7f\u3063\u305f"},{"intent":"create_finance","source_text":"\u99d0\u8eca\u306b10\u4f7f\u3063\u305f","amount":10,"type":"expense","category":"\u4ea4\u901a","occurred_at":"2026-03-28T12:00:00+08:00","note":"\u99d0\u8eca\u306b10\u4f7f\u3063\u305f"}],"need_split":false}',
+        'Q: "\u3053\u3093\u306b\u3061\u306f" -> {"steps":[],"need_split":false}',
+    ],
+}
+
+
+PLANNER_TEMPORAL_INHERITANCE_EXAMPLES = {
+    "zh-CN": "Example: '\u6628\u5929\u4e70\u83dc6\u5757\uff0c\u505c\u8f6610\u5757' means both finance items happened yesterday.\n",
+    "en-US": "Example: 'Yesterday I spent 6 on groceries and 10 on parking' means both finance items happened yesterday.\n",
+    "ja-JP": "Example: '\u6628\u65e5\u306f\u98df\u6750\u306b6\u3001\u99d0\u8eca\u306b10\u4f7f\u3063\u305f' means both finance items happened yesterday.\n",
+}
+
+
 PARSER_DATA = {
     "amount_pattern": r"(-?\d+(?:\.\d+)?)\s*(?:\u5143|\u5757|\u5757\u94b1|\u4eba\u6c11\u5e01|rmb|RMB|\u00a5)",
     "finance_income_words": [
@@ -601,3 +710,19 @@ def translate(locale: str | None, key: str, **params) -> str:
     for name, value in params.items():
         current = current.replace(f"{{{name}}}", str(value))
     return current
+
+
+def translate_finance_category(locale: str | None, category_code: str) -> str:
+    normalized = normalize_locale(locale)
+    labels = FINANCE_CATEGORY_LABELS.get(normalized, FINANCE_CATEGORY_LABELS[DEFAULT_LOCALE])
+    return labels.get(category_code, category_code)
+
+
+def get_planner_examples(locale: str | None) -> list[str]:
+    normalized = normalize_locale(locale)
+    return list(ASSISTANT_PLANNER_EXAMPLES.get(normalized, ASSISTANT_PLANNER_EXAMPLES[DEFAULT_LOCALE]))
+
+
+def get_planner_temporal_inheritance_example(locale: str | None) -> str:
+    normalized = normalize_locale(locale)
+    return PLANNER_TEMPORAL_INHERITANCE_EXAMPLES.get(normalized, PLANNER_TEMPORAL_INHERITANCE_EXAMPLES[DEFAULT_LOCALE])

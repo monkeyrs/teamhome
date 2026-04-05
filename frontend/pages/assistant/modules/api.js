@@ -1,5 +1,12 @@
 const { request, downloadFile } = require("../../../utils/request");
 
+function getProfile() {
+  return request({
+    path: "/auth/me",
+    method: "GET"
+  });
+}
+
 function updateLanguage(locale) {
   return updateProfile({ language: locale });
 }
@@ -77,6 +84,7 @@ function downloadAssistantData() {
 }
 
 module.exports = {
+  getProfile,
   updateLanguage,
   updateProfile,
   discoverTeam,

@@ -1,5 +1,5 @@
 const { setCurrentTeamId, setCurrentUser } = require("../../utils/request");
-const { bootstrapSession } = require("../../utils/bootstrap");
+const { bootstrapSession, refreshUserInfo } = require("../../utils/bootstrap");
 const { applyPageLocale, getLocale, getMessages, setLocale } = require("../../utils/i18n");
 const { markDataDirty } = require("../../utils/data-sync");
 const { triggerFeedback } = require("../../utils/feedback");
@@ -26,12 +26,22 @@ function isMutationIntent(intent) {
   return MUTATION_INTENTS.has(String(intent || ""));
 }
 
+function shouldContinueAssistantSession(status) {
+  return [
+    "collecting",
+    "awaiting_confirmation",
+    "blocked",
+    "collecting_conflict_update"
+  ].includes(String(status || ""));
+}
+
 function buildProfileState(user) {
   const nickname = (user && user.nickname) || "";
   return {
     nicknamePromptOpen: !nickname,
     profileNickname: nickname,
-    profileLocked: !!nickname
+    profileLocked: !!nickname,
+    nicknameCelebrateActive: false
   };
 }
 
@@ -54,7 +64,7 @@ function decorateTeams(teams, visibilityMap, t) {
       isReadonly: !!item.is_readonly,
       passwordVisible,
       metaText: isDemo
-        ? `${t("page.teamDemoBadge")} · ${item.member_count}${t("page.teamMemberUnit")} · ${t("page.teamReadonlyBadge")}`
+        ? t("page.teamDemoMeta")
         : `${item.member_count}/30`,
       passwordButtonText: hasPassword
         ? (passwordVisible ? item.join_password : t("page.teamPasswordToggle"))
@@ -80,6 +90,15 @@ function buildDemoEntryOptions(t) {
       displayName: t("page.demoTeamLog")
     }
   ];
+}
+
+function filterJoinedDemoEntryOptions(options, teams) {
+  const joinedNames = new Set((teams || []).map((item) => String((item && item.name) || "").trim()).filter(Boolean));
+  return (options || []).filter((item) => !joinedNames.has(String(item.teamName || "").trim()));
+}
+
+function buildVisibleDemoEntryOptions(teams, t) {
+  return filterJoinedDemoEntryOptions(buildDemoEntryOptions(t), teams);
 }
 
 function isKnownDemoTeamName(name) {
@@ -142,6 +161,7 @@ Page({
     graphState.threadId = sessionId || "";
     graphState.threadStatus = "busy";
     graphState.highlightedStages = ["prepare"];
+    graphState.activeStage = "prepare";
     return graphState;
   },
 
@@ -149,6 +169,10 @@ Page({
     const normalized = normalizeGraphState(graphState);
     if (!normalized.highlightedStages.length && (normalized.available || normalized.threadId || sessionId || this.data.loading)) {
       normalized.highlightedStages = ["prepare"];
+      normalized.activeStage = "prepare";
+    }
+    if (!normalized.activeStage && normalized.highlightedStages.length) {
+      normalized.activeStage = normalized.highlightedStages[normalized.highlightedStages.length - 1];
     }
     return normalized;
   },
@@ -226,7 +250,7 @@ Page({
       if (this.data.loading && this._activeRequestToken === requestToken && !this._ignoredRequestTokens.has(requestToken)) {
         this._graphStatePollingTimer = setTimeout(() => {
           this.pollGraphState(teamId, sessionId, requestToken);
-        }, 1000);
+        }, 500);
       }
     }
   },
@@ -254,23 +278,46 @@ Page({
     this.stopProcessingIndicator();
     this.stopGraphStatePolling();
     this.stopGraphPulse();
+    this.stopNicknameCelebrate();
   },
 
   onUnload() {
     this.stopProcessingIndicator();
     this.stopGraphStatePolling();
     this.stopGraphPulse();
+    this.stopNicknameCelebrate();
   },
 
   applyLocale() {
     const locale = getLocale();
     const messages = getMessages(locale);
+    const localizedNicknameSetupTitle = (
+      (((messages || {}).assistant || {}).nicknameSetupTitleFun)
+      || (
+        locale === "en-US"
+          ? "Hey! What should I call you? 😊"
+          : locale === "ja-JP"
+            ? "ねえ、なんて呼べばいい？😊"
+            : "嘿！请叫我什么？😊"
+      )
+    );
+    const localizedGraphSpeedBoosted = (
+      (((messages || {}).assistant || {}).graphSpeedBoosted)
+      || (
+        locale === "en-US"
+          ? "Speed mode activated"
+          : locale === "ja-JP"
+            ? "スピードモードを開始しました"
+            : "加速模式已启动"
+      )
+    );
     applyPageLocale(this, "assistant");
     const visibilityMap = getTeamPasswordVisibilityMap(this.data.teams);
     this.setData({
+      nicknameSetupTitleFunText: localizedNicknameSetupTitle,
       graphI18n: messages.analysis || {},
       teams: decorateTeams(this.data.teams, visibilityMap, (path) => this.t(path)),
-      demoEntryOptions: buildDemoEntryOptions((path) => this.t(path)),
+      demoEntryOptions: buildVisibleDemoEntryOptions(this.data.teams, (path) => this.t(path)),
       answerStatusLabel: this.formatAnswerStatus(this.data.answerStatus),
       assistantGraphNodes: buildAssistantGraphNodes(this.data.assistantGraphState, messages.analysis || {}),
       answer: this.data.loading
@@ -300,8 +347,9 @@ Page({
   async initPage() {
     this.setData({ loading: true });
     try {
+      const freshUser = await refreshUserInfo();
       const { teamId, teams, user, realTeams, demoTeams, capabilities } = await bootstrapSession();
-      const profileUser = user || (((getApp() || {}).globalData || {}).user) || null;
+      const profileUser = freshUser || user || (((getApp() || {}).globalData || {}).user) || null;
       const teamIndex = resolveTeamIndex(teams, teamId);
       const visibilityMap = getTeamPasswordVisibilityMap(this.data.teams);
       this.setData({
@@ -310,7 +358,7 @@ Page({
         teams: decorateTeams(teams, visibilityMap, (path) => this.t(path)),
         realTeams: realTeams || [],
         demoTeams: demoTeams || [],
-        demoEntryOptions: buildDemoEntryOptions((path) => this.t(path)),
+        demoEntryOptions: buildVisibleDemoEntryOptions(teams, (path) => this.t(path)),
         teamIndex: teamIndex < 0 ? 0 : teamIndex,
         teamPanelOpen: !!(capabilities && capabilities.shouldPromptTeamEntry),
         teamInputFocused: false
@@ -448,6 +496,37 @@ Page({
     this.setData({ profileNickname: event.detail.value });
   },
 
+  stopNicknameCelebrate() {
+    if (this._nicknameCelebrateTimer) {
+      clearTimeout(this._nicknameCelebrateTimer);
+      this._nicknameCelebrateTimer = null;
+    }
+    if (this.data.nicknameCelebrateActive) {
+      this.setData({ nicknameCelebrateActive: false });
+    }
+  },
+
+  triggerNicknameCelebrate() {
+    this.stopNicknameCelebrate();
+    this.setData({ nicknameCelebrateActive: true });
+    this._nicknameCelebrateTimer = setTimeout(() => {
+      this._nicknameCelebrateTimer = null;
+      this.setData({ nicknameCelebrateActive: false });
+    }, 1500);
+  },
+
+  onGraphNodeLongPress(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const node = this.data.assistantGraphNodes[index];
+    if (!node) return;
+    wx.showModal({
+      title: node.title,
+      content: node.desc || "",
+      showCancel: false,
+      confirmText: this.t("common.confirm")
+    });
+  },
+
   async submitProfile(event) {
     if (this.data.savingProfile || this.data.profileLocked) return;
 
@@ -463,6 +542,7 @@ Page({
       const user = await assistantApi.updateProfile({ nickname });
       setCurrentUser(user);
       this.setData(buildProfileState(user));
+      this.triggerNicknameCelebrate();
       wx.showToast({ title: this.t("page.profileSaved"), icon: "success" });
     } catch (err) {
       const detail = err && err.responseData && err.responseData.detail;
@@ -482,6 +562,7 @@ Page({
       teams: decorateTeams(teams, visibilityMap, (path) => this.t(path)),
       realTeams,
       demoTeams,
+      demoEntryOptions: buildVisibleDemoEntryOptions(teams, (path) => this.t(path)),
       teamIndex: teamIndex < 0 ? 0 : teamIndex
     });
     return teams;
@@ -706,10 +787,11 @@ Page({
     const isIdleGraphState = !this.data.loading
       && !this.data.answer
       && !((this.data.assistantGraphState && this.data.assistantGraphState.highlightedStages) || []).length;
-    const continueMutation = !!this.data.assistantMutationSessionId && this.data.answerStatus === "collecting";
+    const continueMutation = !!this.data.assistantMutationSessionId && shouldContinueAssistantSession(this.data.answerStatus);
+    const continueConversation = !!this.data.assistantConversationSessionId && shouldContinueAssistantSession(this.data.answerStatus);
     const sessionId = continueMutation
       ? this.data.assistantMutationSessionId
-      : (this.data.assistantConversationSessionId || createRequestToken());
+      : (continueConversation ? this.data.assistantConversationSessionId : createRequestToken());
 
     const requestToken = createRequestToken();
     this._activeRequestToken = requestToken;
@@ -744,10 +826,10 @@ Page({
       const responseIsMutation = responseMode === "mutation" || (!responseMode && isMutationIntent(responseIntent));
       if (responseIsMutation) {
         mapped.assistantConversationSessionId = "";
-        mapped.assistantMutationSessionId = data && data.status === "collecting" ? responseSessionId : "";
+        mapped.assistantMutationSessionId = shouldContinueAssistantSession(data && data.status) ? responseSessionId : "";
       } else {
         mapped.assistantMutationSessionId = "";
-        mapped.assistantConversationSessionId = responseSessionId;
+        mapped.assistantConversationSessionId = shouldContinueAssistantSession(data && data.status) ? responseSessionId : "";
       }
       this.setData(mapped);
     } catch (err) {

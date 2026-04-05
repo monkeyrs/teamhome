@@ -7,13 +7,19 @@ import re
 import uuid
 from typing import TypedDict
 
-import httpx
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
-from sqlalchemy.orm import sessionmaker
 
 from app.core.config import get_settings
-from app.core.i18n import RELATIVE_DAY_TERMS, TERM_SETS, normalize_locale, translate
+from app.core.i18n import (
+    FINANCE_CATEGORY_ALIASES,
+    RELATIVE_DAY_TERMS,
+    TERM_SETS,
+    get_planner_examples,
+    get_planner_temporal_inheritance_example,
+    normalize_locale,
+    translate,
+    translate_finance_category,
+)
 from app.crud.finance import create_finance_record, find_recent_duplicate_finance_record, list_finance_records
 from app.crud.schedule import create_schedule, list_schedules
 from app.crud.team import can_read_team, can_write_team, is_team_member
@@ -27,6 +33,7 @@ from app.services.assistant_session_service import (
     save_session,
     save_undo_batch,
 )
+from app.services import assistant_langgraph
 from app.services.llm.openrouter import get_llm_client
 from app.services.llm.parser import parse_finance_text, parse_schedule_text
 
@@ -66,15 +73,7 @@ ALLOWED_INTENTS = {
 _BARE_NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
 _MESSAGE_FRAGMENT_SPLIT_RE = re.compile(r"(?<=[。！？!?；;])\s+")
 _ASSISTANT_GRAPH = None
-_LANGGRAPH_BASE_URL_CACHE: str | None = None
-_LANGGRAPH_FALLBACK_URLS = (
-    "http://langgraph:22024",
-    "http://127.0.0.1:22024",
-    "http://localhost:22024",
-)
 _LANGGRAPH_UNDO_MESSAGE = "__assistant_undo_batch__"
-_LANGGRAPH_THREAD_NAMESPACE = uuid.UUID("2f6b44cd-9cf9-4027-9c73-bca142f2d128")
-_GRAPH_SESSION_FACTORIES: dict[str, sessionmaker] = {}
 _LANGGRAPH_STAGE_ORDER = (
     "prepare",
     "loop_guard",
@@ -151,291 +150,110 @@ def _normalize_uuid(value: uuid.UUID | str) -> uuid.UUID:
 
 
 def _langgraph_assistant_id() -> str:
-    configured = _normalize_optional_text(get_settings().LANGGRAPH_ASSISTANT_ID)
-    return configured or "assistant_orchestrator"
+    return assistant_langgraph.get_assistant_id()
 
 
 def _new_graph_db_session() -> Session:
-    database_url = get_settings().DATABASE_URL
-    factory = _GRAPH_SESSION_FACTORIES.get(database_url)
-    if factory is None:
-        engine = create_engine(database_url, pool_pre_ping=True)
-        factory = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-        _GRAPH_SESSION_FACTORIES[database_url] = factory
-    return factory()
-
-
-def _langgraph_base_urls() -> list[str]:
-    global _LANGGRAPH_BASE_URL_CACHE
-    settings = get_settings()
-    configured = _normalize_optional_text(settings.LANGGRAPH_API_URL)
-    ordered: list[str] = []
-    if _LANGGRAPH_BASE_URL_CACHE:
-        ordered.append(_LANGGRAPH_BASE_URL_CACHE.rstrip("/"))
-    if configured:
-        ordered.append(configured.rstrip("/"))
-    ordered.extend(_LANGGRAPH_FALLBACK_URLS)
-    deduped: list[str] = []
-    for url in ordered:
-        normalized = (url or "").strip().rstrip("/")
-        if normalized and normalized not in deduped:
-            deduped.append(normalized)
-    return deduped
+    return assistant_langgraph.new_graph_db_session()
 
 
 def _resolve_langgraph_thread_id(session_id: str | None) -> str:
-    token = _normalize_optional_text(session_id)
-    if not token:
-        return str(uuid.uuid4())
-    try:
-        return str(uuid.UUID(token))
-    except ValueError:
-        return str(uuid.uuid5(_LANGGRAPH_THREAD_NAMESPACE, token))
-
-
-def _langgraph_request_headers() -> dict[str, str]:
-    headers = {"Accept": "application/json"}
-    api_key = _normalize_optional_text(get_settings().LANGSMITH_API_KEY)
-    if api_key:
-        headers["X-Api-Key"] = api_key
-    return headers
+    return assistant_langgraph.resolve_thread_id(session_id)
 
 
 def _request_langgraph_json(method: str, path: str, payload: dict | None = None) -> dict:
-    global _LANGGRAPH_BASE_URL_CACHE
-    settings = get_settings()
-    timeout = max(float(settings.LANGGRAPH_REQUEST_TIMEOUT_SECONDS or 45), 5.0)
-    last_error: Exception | None = None
-    candidates = _langgraph_base_urls()
-    for index, base_url in enumerate(candidates):
-        url = f"{base_url}{path}"
-        try:
-            with httpx.Client(timeout=timeout, headers=_langgraph_request_headers()) as client:
-                request_kwargs = {"json": payload} if payload is not None else {}
-                response = client.request(method.upper(), url, **request_kwargs)
-            response.raise_for_status()
-            _LANGGRAPH_BASE_URL_CACHE = base_url
-            if not response.content:
-                return {}
-            data = response.json()
-            return data if isinstance(data, dict) else {"output": data}
-        except httpx.RequestError as exc:
-            last_error = exc
-            continue
-        except httpx.HTTPStatusError as exc:
-            detail = exc.response.text.strip()
-            message = f"LangGraph API request failed: {exc.response.status_code} {detail[:240]}".strip()
-            last_error = RuntimeError(message)
-            should_try_next = exc.response.status_code in {404, 502, 503, 504} and index < len(candidates) - 1
-            if should_try_next:
-                continue
-            raise last_error from exc
-    raise RuntimeError(f"LangGraph API unavailable: {last_error}") from last_error
+    return assistant_langgraph.request_json(method, path, payload)
 
 
 def _post_langgraph_json(path: str, payload: dict) -> dict:
-    return _request_langgraph_json("POST", path, payload)
+    return assistant_langgraph.post_json(path, payload)
 
 
 def _get_langgraph_json(path: str) -> dict:
-    return _request_langgraph_json("GET", path)
+    return assistant_langgraph.get_json(path)
 
 
 def _ensure_langgraph_thread(*, thread_id: str, team_id: uuid.UUID, user_id: uuid.UUID, locale: str) -> None:
-    _post_langgraph_json(
-        "/threads",
-        {
-            "thread_id": thread_id,
-            "if_exists": "do_nothing",
-            "metadata": {
-                "team_id": str(team_id),
-                "user_id": str(user_id),
-                "locale": locale,
-                "source": "teamhome-api",
-            },
-        },
-    )
+    assistant_langgraph.ensure_thread(thread_id=thread_id, team_id=team_id, user_id=user_id, locale=locale)
 
 
 def _extract_langgraph_response(payload: dict) -> dict:
-    response = payload.get("response") if isinstance(payload, dict) else None
-    if isinstance(response, dict):
-        return response
-    error = payload.get("__error__") if isinstance(payload, dict) else None
-    if isinstance(error, dict):
-        message = _normalize_optional_text(error.get("message")) or _normalize_optional_text(error.get("error")) or "unknown error"
-        raise RuntimeError(f"LangGraph run failed: {message}")
-    raise RuntimeError("LangGraph run output missing response payload")
+    return assistant_langgraph.extract_langgraph_response(payload)
 
 
 def _collect_langgraph_state_nodes(snapshot: object) -> list[str]:
-    collected: list[str] = []
-
-    def append_node(value: object) -> None:
-        text = _normalize_optional_text(value)
-        if text:
-            collected.append(text)
-
-    def walk(state: object) -> None:
-        if not isinstance(state, dict):
-            return
-        for item in state.get("next") or []:
-            append_node(item)
-        metadata = state.get("metadata")
-        if isinstance(metadata, dict):
-            writes = metadata.get("writes")
-            if isinstance(writes, dict):
-                for key in writes.keys():
-                    append_node(key)
-        tasks = state.get("tasks")
-        if isinstance(tasks, list):
-            for task in tasks:
-                if not isinstance(task, dict):
-                    continue
-                append_node(task.get("name"))
-                interrupts = task.get("interrupts")
-                if isinstance(interrupts, list):
-                    for interrupt in interrupts:
-                        if isinstance(interrupt, dict):
-                            append_node(interrupt.get("node"))
-                walk(task.get("state"))
-
-    walk(snapshot)
-    return collected
+    return assistant_langgraph.collect_state_nodes(snapshot)
 
 
 def _map_langgraph_nodes_to_stages(node_names: list[str]) -> list[str]:
-    mapped: list[str] = []
-    for node_name in node_names:
-        stage = _LANGGRAPH_STAGE_MAP.get(node_name)
-        if stage and stage not in mapped:
-            mapped.append(stage)
-    return [stage for stage in _LANGGRAPH_STAGE_ORDER if stage in mapped]
+    return assistant_langgraph.map_nodes_to_stages(
+        node_names,
+        stage_map=_LANGGRAPH_STAGE_MAP,
+        stage_order=_LANGGRAPH_STAGE_ORDER,
+    )
 
 
 def _normalize_highlighted_stages(stages: list[str]) -> list[str]:
-    present = {stage for stage in stages if stage in _LANGGRAPH_STAGE_ORDER}
-    if not present:
-        return []
-    present.add("prepare")
-    if present - {"prepare"}:
-        present.add("loop_guard")
-    return [stage for stage in _LANGGRAPH_STAGE_ORDER if stage in present]
+    return assistant_langgraph.normalize_highlighted_stages(stages, stage_order=_LANGGRAPH_STAGE_ORDER)
 
 
 def _graph_stage_fallback_from_response(response: dict) -> list[str]:
-    payload = response if isinstance(response, dict) else {}
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-    status = _normalize_optional_text(payload.get("status")) or ""
-    result_items = data.get("results") if isinstance(data.get("results"), list) else []
-    intents: list[str] = []
-    for item in result_items:
-        if isinstance(item, dict):
-            intent = _normalize_optional_text(item.get("intent"))
-            if intent:
-                intents.append(intent)
-    direct_intent = _normalize_optional_text(payload.get("intent"))
-    if direct_intent:
-        intents.append(direct_intent)
-
-    stages: list[str] = []
-    if any(intent in {INTENT_QUERY_FINANCE, INTENT_CREATE_FINANCE} for intent in intents):
-        stages.append("expense_subgraph")
-    if any(intent in {INTENT_QUERY_SCHEDULE, INTENT_CREATE_SCHEDULE} for intent in intents):
-        stages.append("schedule_subgraph")
-    if stages or status in {STATUS_COLLECTING, STATUS_EXECUTED, STATUS_UNSUPPORTED, STATUS_CANCELLED, "blocked", "awaiting_confirmation", "collecting_conflict_update"}:
-        stages.append("collect_result")
-    if status == STATUS_EXECUTED and any(intent in MUTATING_INTENTS for intent in intents):
-        stages.append("commit_batch")
-    return _normalize_highlighted_stages(stages)
+    return assistant_langgraph.graph_stage_fallback_from_response(
+        response,
+        query_finance_intent=INTENT_QUERY_FINANCE,
+        create_finance_intent=INTENT_CREATE_FINANCE,
+        query_schedule_intent=INTENT_QUERY_SCHEDULE,
+        create_schedule_intent=INTENT_CREATE_SCHEDULE,
+        mutating_intents=MUTATING_INTENTS,
+        collecting_status=STATUS_COLLECTING,
+        executed_status=STATUS_EXECUTED,
+        unsupported_status=STATUS_UNSUPPORTED,
+        cancelled_status=STATUS_CANCELLED,
+        stage_order=_LANGGRAPH_STAGE_ORDER,
+    )
 
 
 def _build_langgraph_visual_state(*, thread_id: str, thread: dict | None, state: dict | None) -> dict:
-    thread_payload = thread if isinstance(thread, dict) else {}
-    state_payload = state if isinstance(state, dict) else {}
-    history_payload = []
-    raw_nodes = _collect_langgraph_state_nodes(state_payload)
-    if isinstance(state_payload.get("history"), list):
-        history_payload = state_payload.get("history") or []
-    for item in history_payload:
-        raw_nodes.extend(_collect_langgraph_state_nodes(item))
-    next_nodes = [item for item in state_payload.get("next") or [] if _normalize_optional_text(item)]
-    highlighted_stages = _normalize_highlighted_stages(_map_langgraph_nodes_to_stages(raw_nodes))
-    return {
-        "available": True,
-        "thread_id": thread_id,
-        "thread_status": _normalize_optional_text(thread_payload.get("status")) or "",
-        "highlighted_stages": highlighted_stages,
-        "next_nodes": next_nodes,
-        "updated_at": _normalize_optional_text(thread_payload.get("updated_at"))
-        or _normalize_optional_text(state_payload.get("created_at"))
-        or "",
-    }
+    return assistant_langgraph.build_visual_state(
+        thread_id=thread_id,
+        thread=thread,
+        state=state,
+        stage_map=_LANGGRAPH_STAGE_MAP,
+        stage_order=_LANGGRAPH_STAGE_ORDER,
+        fallback_stages_fn=_graph_stage_fallback_from_response,
+    )
 
 
 def _get_langgraph_history_states(thread_id: str, *, limit: int = 24) -> list[dict]:
-    payload = _post_langgraph_json(f"/threads/{thread_id}/history", {"limit": max(1, min(limit, 100))})
-    if isinstance(payload, dict):
-        output = payload.get("output")
-        if isinstance(output, list):
-            return [item for item in output if isinstance(item, dict)]
-    if isinstance(payload, list):
-        return [item for item in payload if isinstance(item, dict)]
-    return []
+    return assistant_langgraph.get_history_states(thread_id, post_json_fn=_post_langgraph_json, limit=limit)
 
 
 def _get_langgraph_visual_state(thread_id: str) -> dict:
-    thread = _get_langgraph_json(f"/threads/{thread_id}")
-    state = _get_langgraph_json(f"/threads/{thread_id}/state")
-    state_payload = dict(state) if isinstance(state, dict) else {}
-    state_payload["history"] = _get_langgraph_history_states(thread_id)
-    return _build_langgraph_visual_state(thread_id=thread_id, thread=thread, state=state_payload)
+    return assistant_langgraph.get_visual_state(
+        thread_id,
+        get_json_fn=_get_langgraph_json,
+        post_json_fn=_post_langgraph_json,
+        stage_map=_LANGGRAPH_STAGE_MAP,
+        stage_order=_LANGGRAPH_STAGE_ORDER,
+        fallback_stages_fn=_graph_stage_fallback_from_response,
+    )
 
 
 def _attach_langgraph_visual_state(response: dict, *, thread_id: str) -> dict:
-    try:
-        graph_state = _get_langgraph_visual_state(thread_id)
-    except Exception:
-        graph_state = {
-            "available": False,
-            "thread_id": thread_id,
-            "thread_status": "",
-            "highlighted_stages": [],
-            "next_nodes": [],
-            "updated_at": "",
-        }
-    if not graph_state.get("highlighted_stages"):
-        graph_state["highlighted_stages"] = _graph_stage_fallback_from_response(response)
-    data = dict(response.get("data") or {})
-    data["graph_state"] = graph_state
-    response["data"] = data
-    return response
+    return assistant_langgraph.attach_visual_state(
+        response,
+        thread_id=thread_id,
+        get_visual_state_fn=_get_langgraph_visual_state,
+        fallback_stages_fn=_graph_stage_fallback_from_response,
+    )
 
 
 def get_assistant_graph_state(*, session_id: str | None) -> dict:
-    token = _normalize_optional_text(session_id)
-    if not token:
-        return {
-            "available": False,
-            "thread_id": "",
-            "thread_status": "",
-            "highlighted_stages": [],
-            "next_nodes": [],
-            "updated_at": "",
-        }
-
-    thread_id = _resolve_langgraph_thread_id(token)
-    try:
-        return _get_langgraph_visual_state(thread_id)
-    except Exception:
-        return {
-            "available": False,
-            "thread_id": thread_id,
-            "thread_status": "",
-            "highlighted_stages": [],
-            "next_nodes": [],
-            "updated_at": "",
-        }
+    return assistant_langgraph.fetch_graph_state(
+        session_id,
+        resolve_thread_id_fn=_resolve_langgraph_thread_id,
+        get_visual_state_fn=_get_langgraph_visual_state,
+    )
 
 
 def _normalize_text(text: str) -> str:
@@ -471,21 +289,6 @@ def _normalize_optional_text(value: object) -> str | None:
     return text or None
 
 
-def _normalize_finance_category_value(value: object) -> str | None:
-    text = _normalize_optional_text(value)
-    if not text:
-        return None
-    mapping = {
-        "food": "餐费",
-        "meal": "餐费",
-        "transport": "交通",
-        "traffic": "交通",
-        "taxi": "交通",
-        "lodging": "住宿",
-        "hotel": "住宿",
-        "accommodation": "住宿",
-    }
-    return mapping.get(text.casefold(), text)
 
 
 def _format_dt(value: dt.datetime | None, locale: str) -> str:
@@ -495,29 +298,21 @@ def _format_dt(value: dt.datetime | None, locale: str) -> str:
     return local_value.strftime("%Y-%m-%d %H:%M")
 
 
-def _normalize_finance_category_value(value: object) -> str | None:
+def _finance_category_display(locale: str, category: str) -> str:
+    return translate_finance_category(locale, category)
+
+
+def _normalize_finance_category_value(value: object, locale: str = "zh-CN") -> str | None:
     text = _normalize_optional_text(value)
     if not text:
         return None
     normalized = text.casefold()
-    mapping = {
-        "food": "餐费",
-        "meal": "餐费",
-        "transport": "交通",
-        "traffic": "交通",
-        "taxi": "交通",
-        "rent": "房租",
-        "lodging": "住宿",
-        "hotel": "住宿",
-        "accommodation": "住宿",
-        "utilities": "水电",
-        "shopping": "购物",
-        "entertainment": "娱乐",
-        "salary": "工资",
-        "reimbursement": "报销",
-        "other": None,
-    }
-    return mapping.get(normalized, text)
+    mapped = FINANCE_CATEGORY_ALIASES.get(normalized)
+    if mapped is None:
+        return text
+    if mapped == "other":
+        return "other"
+    return _finance_category_display(locale, mapped)
 
 
 def _parse_iso_datetime(value: str | None) -> dt.datetime | None:
@@ -645,17 +440,8 @@ def _term_set_preview(name: str) -> str:
     return ", ".join(items[:PLANNER_KEYWORD_PREVIEW_LIMIT])
 
 
-def _planner_examples() -> str:
-    return "\n".join(
-        [
-            'Q: "本月花了多少钱" -> {"steps":[{"intent":"query_finance","source_text":"本月花了多少钱","question":"本月花了多少钱","label":"本月"}],"need_split":false}',
-            'Q: "明天有什么安排" -> {"steps":[{"intent":"query_schedule","source_text":"明天有什么安排","label":"明天"}],"need_split":false}',
-            'Q: "记一笔排练室费用 300" -> {"steps":[{"intent":"create_finance","source_text":"记一笔排练室费用 300","amount":300,"type":"expense","category":"排练","note":"记一笔排练室费用 300"}],"need_split":false}',
-            'Q: "明晚八点排练" -> {"steps":[{"intent":"create_schedule","source_text":"明晚八点排练","title":"排练","start_time":"2026-03-30T20:00:00+08:00","end_time":"2026-03-30T21:00:00+08:00"}],"need_split":false}',
-            'Q: "昨天去太平洋市场买菜花了6块，停车花了十块" -> {"steps":[{"intent":"create_finance","source_text":"昨天去太平洋市场买菜花了6块","amount":6,"type":"expense","category":"餐费","occurred_at":"2026-03-28T12:00:00+08:00","note":"昨天去太平洋市场买菜花了6块"},{"intent":"create_finance","source_text":"停车花了十块","amount":10,"type":"expense","category":"交通","occurred_at":"2026-03-28T12:00:00+08:00","note":"停车花了十块"}],"need_split":false}',
-            'Q: "你好" -> {"steps":[],"need_split":false}',
-        ]
-    )
+def _planner_examples(locale: str = "zh-CN") -> str:
+    return "\n".join(get_planner_examples(locale))
 
 
 def _planner_history_preview(history: list[dict] | None) -> str:
@@ -722,15 +508,15 @@ def _deserialize_slots(intent: str, slots: dict) -> dict:
     return normalized
 
 
-def _extract_finance_slots(message: str) -> dict:
+def _extract_finance_slots(message: str, locale: str) -> dict:
     text = _normalize_text(message)
     # Keep slot extraction deterministic in graph execution.
     parsed = parse_finance_text(text, use_llm=False)
-    category = _normalize_finance_category_value(parsed.get("category"))
+    category = _normalize_finance_category_value(parsed.get("category"), locale)
     if category == "other":
         category = None
     if category is None and _contains_any(text, TERM_SETS["food_terms"]):
-        category = "餐费"
+        category = _finance_category_display(locale, "food")
     record_type = parsed.get("type")
     has_type_hint = _contains_any(text, TERM_SETS["expense_hints"] | TERM_SETS["income_hints"])
     if parsed.get("type_confidence") == "low":
@@ -885,7 +671,7 @@ def _sanitize_planned_intents(message: str, intents: list[str]) -> list[str]:
     return ordered or [INTENT_UNSUPPORTED]
 
 
-def _plan_intents(message: str, *, history: list[dict] | None = None) -> tuple[list[str], bool]:
+def _plan_intents(message: str, *, history: list[dict] | None = None, locale: str = "zh-CN") -> tuple[list[str], bool]:
     text = _normalize_text(message)
     fallback = _heuristic_intents(text)
     if fallback == [INTENT_UNSUPPORTED]:
@@ -907,7 +693,7 @@ def _plan_intents(message: str, *, history: list[dict] | None = None) -> tuple[l
         "Money/income/expense/reimbursement/budget/profit => finance.\n"
         "If the message is just greeting/small talk, return steps=[].\n"
         "If it truly needs more than 5 actions, set need_split=true.\n"
-        f"Examples:\n{_planner_examples()}\n"
+        f"Examples:\n{_planner_examples(locale)}\n"
         'JSON schema: {"steps":[{"intent":"create_finance|query_finance|create_schedule|query_schedule"}],"need_split":false}'
     )
     user = (
@@ -954,9 +740,9 @@ def _normalize_planned_datetime(value: object) -> dt.datetime | None:
     return _parse_iso_datetime(text)
 
 
-def _planned_slots_from_item(intent: str, item: dict, source_text: str) -> dict:
+def _planned_slots_from_item(intent: str, item: dict, source_text: str, locale: str) -> dict:
     if intent == INTENT_CREATE_FINANCE:
-        category = _normalize_finance_category_value(item.get("category"))
+        category = _normalize_finance_category_value(item.get("category"), locale)
         return {
             "amount": _normalize_planned_amount(item.get("amount")),
             "type": _normalize_optional_text(item.get("type")),
@@ -987,7 +773,7 @@ def _planned_slots_from_item(intent: str, item: dict, source_text: str) -> dict:
     return {}
 
 
-def _sanitize_planned_step_items(message: str, raw_steps: list[object]) -> list[dict]:
+def _sanitize_planned_step_items(message: str, raw_steps: list[object], locale: str) -> list[dict]:
     sanitized_steps: list[dict] = []
     full_message = _normalize_text(message)
     for item in raw_steps:
@@ -1003,12 +789,12 @@ def _sanitize_planned_step_items(message: str, raw_steps: list[object]) -> list[
         resolved_intent = sanitized_intents[0]
         step_payload = {"intent": resolved_intent, "source_text": source_text or full_message}
         if isinstance(item, dict):
-            step_payload["slots"] = _planned_slots_from_item(resolved_intent, item, source_text or full_message)
+            step_payload["slots"] = _planned_slots_from_item(resolved_intent, item, source_text or full_message, locale)
         sanitized_steps.append(step_payload)
     return sanitized_steps
 
 
-def _plan_step_items(message: str, *, history: list[dict] | None = None) -> tuple[list[dict], bool]:
+def _plan_step_items(message: str, *, history: list[dict] | None = None, locale: str = "zh-CN") -> tuple[list[dict], bool]:
     text = _normalize_text(message)
     if not text:
         return [], False
@@ -1029,13 +815,13 @@ def _plan_step_items(message: str, *, history: list[dict] | None = None) -> tupl
         "For schedule items, extract title, start_time, end_time, and is_all_day when applicable.\n"
         "For query items, extract label and date window if explicit.\n"
         "If a later item omits time/date but clearly shares temporal context with a previous item, inherit that temporal context.\n"
-        "Example: '昨天买菜6块，停车10块' means both finance items happened yesterday.\n"
+        f"{get_planner_temporal_inheritance_example(locale)}"
         "Set note to the original wording of that item, not a rewritten summary.\n"
         "Datetime fields must be ISO8601 with timezone when you can infer them reliably.\n"
         "Do not merge separate finance or schedule items into one step.\n"
         "If the message is just greeting/small talk, return steps=[].\n"
         f"If it truly needs more than {MAX_PLAN_STEPS} actions, set need_split=true.\n"
-        f"Examples:\n{_planner_examples()}\n"
+        f"Examples:\n{_planner_examples(locale)}\n"
         'JSON schema: {"steps":[{"intent":"create_finance|query_finance|create_schedule|query_schedule","source_text":"...","amount":number|null,"type":"income|expense|null","category":string|null,"occurred_at":"ISO8601|null","note":string|null,"title":string|null,"start_time":"ISO8601|null","end_time":"ISO8601|null","is_all_day":boolean|null,"question":string|null,"window_start":"ISO8601|null","window_end":"ISO8601|null","label":string|null}],"need_split":false}'
     )
     user = (
@@ -1053,7 +839,7 @@ def _plan_step_items(message: str, *, history: list[dict] | None = None) -> tupl
     if not isinstance(raw_steps, list):
         return [], False
 
-    items = _sanitize_planned_step_items(text, raw_steps)
+    items = _sanitize_planned_step_items(text, raw_steps, locale)
     if len(items) > MAX_PLAN_STEPS:
         return [], True
     if len(items) > 1 and {item.get("source_text") for item in items} == {text}:
@@ -1097,7 +883,7 @@ def _slot_prompt_with_context(intent: str, slot_name: str, locale: str, source_t
 def _extract_slots_for_intent(intent: str, message: str, locale: str, current_slots: dict | None = None) -> dict:
     base: dict = {}
     if intent == INTENT_CREATE_FINANCE:
-        base = _extract_finance_slots(message)
+        base = _extract_finance_slots(message, locale)
         if base.get("amount") in (None, ""):
             match = _BARE_NUMBER_RE.search(_normalize_text(message))
             if match:
@@ -1241,7 +1027,7 @@ def _make_initial_steps(intents: list[str], message: str, locale: str, *, source
 
 
 def _plan_steps_from_text(message: str, *, locale: str, history: list[dict] | None = None) -> tuple[list[dict] | None, dict | None]:
-    planned_items, need_split = _plan_step_items(message, history=history)
+    planned_items, need_split = _plan_step_items(message, history=history, locale=locale)
     if need_split:
         return None, _build_response(
             reply=translate(locale, "assistant.too_many_steps", count=MAX_PLAN_STEPS),
@@ -1266,7 +1052,7 @@ def _plan_steps_from_text(message: str, *, locale: str, history: list[dict] | No
         steps = _propagate_adjacent_temporal_context(steps)
         return steps, None
 
-    intents, need_split = _plan_intents(message, history=history)
+    intents, need_split = _plan_intents(message, history=history, locale=locale)
     if need_split:
         return None, _build_response(
             reply=translate(locale, "assistant.too_many_steps", count=MAX_PLAN_STEPS),

@@ -15,82 +15,77 @@
       <view class="section-title" wx:else>{{i18n.page.composerCreateFinance}}</view>
     </view>
 
-    <view class="form-card" wx:if="{{composerKind === 'schedule'}}">
-      <view class="field-group">
-        <view class="field-label">{{i18n.page.titleLabel}}</view>
-        <input class="input-control" placeholder="{{i18n.page.titlePlaceholder}}" value="{{scheduleForm.title}}" bindinput="onInputScheduleTitle" />
-      </view>
-
-      <view class="field-group">
-        <view class="field-label">{{i18n.page.descriptionLabel}}</view>
-        <input class="input-control" placeholder="{{i18n.page.descriptionPlaceholder}}" value="{{scheduleForm.description}}" bindinput="onInputScheduleDescription" />
-      </view>
-
-      <view class="field-group">
-        <view class="field-label">{{i18n.page.locationLabel}}</view>
-        <input class="input-control" placeholder="{{i18n.page.locationPlaceholder}}" value="{{scheduleForm.locationText}}" bindinput="onInputScheduleLocation" />
-        <view class="quick-field-head">
-          <view class="field-hint">{{i18n.page.locationQuickTitle}}</view>
-          <view class="quick-clear" wx:if="{{scheduleForm.locationText}}" bindtap="clearScheduleLocation">{{i18n.page.locationClear}}</view>
-        </view>
-        <view class="quick-list" wx:if="{{placeSuggestions.length}}">
-          <block wx:for="{{placeSuggestions}}" wx:key="id">
-            <view class="quick-chip" data-target="schedule" data-name="{{item.name}}" bindtap="onPickPlace">{{item.name}}</view>
-          </block>
-        </view>
-        <view class="field-hint" wx:else>{{i18n.page.noPlaceSuggestions}}</view>
-      </view>
-
-      <view class="switch-row">
-        <view>
-          <view class="switch-title">{{i18n.page.allDayTitle}}</view>
-          <view class="field-hint">{{i18n.page.allDayHint}}</view>
-        </view>
-        <checkbox-group bindchange="onToggleAllDay">
-          <label class="checkbox-line">
-            <checkbox value="allDay" checked="{{scheduleForm.is_all_day}}" color="#07c160" />
-          </label>
-        </checkbox-group>
-      </view>
-
-      <view class="field-grid">
-        <view class="field-group field-half">
-          <view class="field-label">{{i18n.page.startDate}}</view>
-          <picker mode="date" value="{{scheduleForm.date}}" bindchange="onScheduleDateChange">
-            <view class="picker {{scheduleForm.date ? '' : 'placeholder'}}">{{scheduleForm.date || i18n.page.selectDate}}</view>
-          </picker>
-        </view>
-
-        <view class="field-group field-half" wx:if="{{!scheduleForm.is_all_day}}">
-          <view class="field-label">{{i18n.page.startTime}}</view>
-          <picker mode="time" value="{{scheduleForm.start_clock}}" bindchange="onScheduleStartTimeChange">
-            <view class="picker">{{scheduleForm.start_clock}}</view>
-          </picker>
+    <view class="form-card form-card-compact" wx:if="{{composerKind === 'schedule'}}">
+      <view class="field-group field-inline-stack">
+        <view class="field-inline-head">
+          <view class="field-label field-inline-label">{{i18n.page.titleLabel}}</view>
+          <input class="input-control input-control-inline" placeholder="{{i18n.page.titlePlaceholder}}" value="{{scheduleForm.title}}" bindinput="onInputScheduleTitle" />
         </view>
       </view>
 
-      <view class="field-grid">
-        <view class="field-group field-half">
-          <view class="field-label">{{i18n.page.endDate}}</view>
-          <picker mode="date" start="{{scheduleForm.date}}" value="{{scheduleForm.end_date}}" bindchange="onScheduleEndDateChange">
-            <view class="picker {{scheduleForm.end_date ? '' : 'placeholder'}}">{{scheduleForm.end_date || i18n.page.selectDate}}</view>
-          </picker>
+      <view class="field-group field-inline-stack">
+        <view class="field-inline-head">
+          <view class="field-label field-inline-label">{{i18n.page.descriptionLabel}}</view>
+          <input class="input-control input-control-inline" placeholder="{{i18n.page.descriptionPlaceholder}}" value="{{scheduleForm.description}}" bindinput="onInputScheduleDescription" />
+        </view>
+      </view>
+
+      <view class="field-group field-inline-stack">
+        <view class="field-inline-head field-inline-head-top">
+          <view class="field-label field-inline-label">{{i18n.page.locationLabel}}</view>
+          <input class="input-control input-control-inline" placeholder="{{i18n.page.locationPlaceholder}}" value="{{scheduleForm.locationText}}" bindinput="onInputScheduleLocation" />
+        </view>
+        <scroll-view class="quick-scroll quick-scroll-inline" wx:if="{{compactPlaceSuggestions.length}}" scroll-x="true" enable-flex="true" show-scrollbar="false">
+          <view class="quick-scroll-row">
+            <block wx:for="{{compactPlaceSuggestions}}" wx:key="id">
+              <view class="quick-chip quick-chip-compact" data-target="schedule" data-name="{{item.name}}" bindtap="onPickPlace">{{item.name}}</view>
+            </block>
+          </view>
+        </scroll-view>
+      </view>
+
+      <view class="compact-datetime-card">
+        <view class="compact-picker-line">
+          <view class="field-label field-inline-label">{{i18n.page.startDate}}</view>
+          <view class="compact-picker-main">
+            <view class="compact-picker-row">
+              <picker mode="date" value="{{scheduleForm.date}}" bindchange="onScheduleDateChange">
+                <view class="picker picker-compact {{scheduleForm.date ? '' : 'placeholder'}}">{{scheduleForm.date || i18n.page.selectDate}}</view>
+              </picker>
+              <picker wx:if="{{!scheduleForm.is_all_day}}" mode="time" value="{{scheduleForm.start_clock}}" bindchange="onScheduleStartTimeChange">
+                <view class="picker picker-compact picker-compact-time">{{scheduleForm.start_clock}}</view>
+              </picker>
+            </view>
+            <view class="all-day-side-label">{{i18n.page.allDayTitle}}</view>
+          </view>
         </view>
 
-        <view class="field-group field-half" wx:if="{{!scheduleForm.is_all_day}}">
-          <view class="field-label">{{i18n.page.endTime}}</view>
-          <picker mode="time" value="{{scheduleForm.end_clock}}" bindchange="onScheduleEndTimeChange">
-            <view class="picker">{{scheduleForm.end_clock}}</view>
-          </picker>
+        <view class="compact-picker-line">
+          <view class="field-label field-inline-label">{{i18n.page.endDate}}</view>
+          <view class="compact-picker-main">
+            <view class="compact-picker-row">
+              <picker mode="date" start="{{scheduleForm.date}}" value="{{scheduleForm.end_date}}" bindchange="onScheduleEndDateChange">
+                <view class="picker picker-compact {{scheduleForm.end_date ? '' : 'placeholder'}}">{{scheduleForm.end_date || i18n.page.selectDate}}</view>
+              </picker>
+              <picker wx:if="{{!scheduleForm.is_all_day}}" mode="time" value="{{scheduleForm.end_clock}}" bindchange="onScheduleEndTimeChange">
+                <view class="picker picker-compact picker-compact-time">{{scheduleForm.end_clock}}</view>
+              </picker>
+            </view>
+            <checkbox-group bindchange="onToggleAllDay">
+              <label class="all-day-check-toggle {{scheduleForm.is_all_day ? 'all-day-check-toggle-on' : ''}}">
+                <checkbox value="allDay" checked="{{scheduleForm.is_all_day}}" color="#07c160" />
+              </label>
+            </checkbox-group>
+          </view>
         </view>
       </view>
     </view>
 
-    <view class="form-card" wx:else>
+    <view class="form-card form-card-compact" wx:else>
       <view class="field-row compact-row">
         <view class="field-group amount-group">
           <view class="field-label">{{i18n.page.amount}}</view>
-          <input class="input-control" type="digit" placeholder="{{i18n.page.amountPlaceholder}}" value="{{financeForm.amount}}" bindinput="onInputAmount" />
+          <input class="input-control input-control-inline" type="digit" placeholder="{{i18n.page.amountPlaceholder}}" value="{{financeForm.amount}}" bindinput="onInputAmount" />
         </view>
         <view class="field-group type-group">
           <view class="field-label">{{i18n.page.type}}</view>
@@ -101,50 +96,51 @@
         </view>
       </view>
 
-      <view class="field-row compact-row">
-        <view class="field-group field-half">
-          <view class="field-label">{{i18n.page.date}}</view>
+      <view class="compact-picker-line compact-picker-line-finance">
+        <view class="field-label field-inline-label">{{i18n.page.date}}</view>
+        <view class="compact-picker-row">
           <picker mode="date" value="{{financeForm.occurredDate}}" bindchange="onFinanceDateChange">
-            <view class="picker">{{financeForm.occurredDate}}</view>
+            <view class="picker picker-compact">{{financeForm.occurredDate}}</view>
           </picker>
-        </view>
-        <view class="field-group field-half">
-          <view class="field-label">{{i18n.page.time}}</view>
           <picker mode="time" value="{{financeForm.occurredTime}}" bindchange="onFinanceTimeChange">
-            <view class="picker">{{financeForm.occurredTime}}</view>
+            <view class="picker picker-compact picker-compact-time">{{financeForm.occurredTime}}</view>
           </picker>
         </view>
       </view>
 
-      <view class="field-group">
-        <view class="field-label">{{i18n.page.category}}</view>
-        <input class="input-control" placeholder="{{i18n.page.categoryPlaceholder}}" value="{{financeForm.category}}" bindinput="onInputCategory" />
-        <view class="field-hint">{{i18n.page.categoryQuickTitle}}</view>
-        <view class="quick-list" wx:if="{{categorySuggestions.length}}">
-          <block wx:for="{{categorySuggestions}}" wx:key="*this">
-            <view class="quick-chip {{financeForm.category === item ? 'quick-chip-active' : ''}}" data-category="{{item}}" bindtap="onPickCategory">{{item}}</view>
-          </block>
+      <view class="field-group field-inline-stack">
+        <view class="field-inline-head field-inline-head-top">
+          <view class="field-label field-inline-label">{{i18n.page.category}}</view>
+          <input class="input-control input-control-inline" placeholder="{{i18n.page.categoryPlaceholder}}" value="{{financeForm.category}}" bindinput="onInputCategory" />
         </view>
+        <scroll-view class="quick-scroll quick-scroll-inline" wx:if="{{compactCategorySuggestions.length}}" scroll-x="true" enable-flex="true" show-scrollbar="false">
+          <view class="quick-scroll-row">
+            <block wx:for="{{compactCategorySuggestions}}" wx:key="*this">
+              <view class="quick-chip quick-chip-compact {{financeForm.category === item ? 'quick-chip-active' : ''}}" data-category="{{item}}" bindtap="onPickCategory">{{item}}</view>
+            </block>
+          </view>
+        </scroll-view>
       </view>
 
-      <view class="field-group">
-        <view class="field-label">{{i18n.page.locationLabel}}</view>
-        <input class="input-control" placeholder="{{i18n.page.locationPlaceholder}}" value="{{financeForm.locationText}}" bindinput="onInputFinanceLocation" />
-        <view class="quick-field-head">
-          <view class="field-hint">{{i18n.page.locationQuickTitle}}</view>
-          <view class="quick-clear" wx:if="{{financeForm.locationText}}" bindtap="clearFinanceLocation">{{i18n.page.locationClear}}</view>
+      <view class="field-group field-inline-stack">
+        <view class="field-inline-head field-inline-head-top">
+          <view class="field-label field-inline-label">{{i18n.page.locationLabel}}</view>
+          <input class="input-control input-control-inline" placeholder="{{i18n.page.locationPlaceholder}}" value="{{financeForm.locationText}}" bindinput="onInputFinanceLocation" />
         </view>
-        <view class="quick-list" wx:if="{{placeSuggestions.length}}">
-          <block wx:for="{{placeSuggestions}}" wx:key="id">
-            <view class="quick-chip" data-target="finance" data-name="{{item.name}}" bindtap="onPickPlace">{{item.name}}</view>
-          </block>
-        </view>
-        <view class="field-hint" wx:else>{{i18n.page.noPlaceSuggestions}}</view>
+        <scroll-view class="quick-scroll quick-scroll-inline" wx:if="{{compactPlaceSuggestions.length}}" scroll-x="true" enable-flex="true" show-scrollbar="false">
+          <view class="quick-scroll-row">
+            <block wx:for="{{compactPlaceSuggestions}}" wx:key="id">
+              <view class="quick-chip quick-chip-compact" data-target="finance" data-name="{{item.name}}" bindtap="onPickPlace">{{item.name}}</view>
+            </block>
+          </view>
+        </scroll-view>
       </view>
 
-      <view class="field-group">
-        <view class="field-label">{{i18n.page.note}}</view>
-        <input class="input-control" placeholder="{{i18n.page.notePlaceholder}}" value="{{financeForm.note}}" bindinput="onInputFinanceNote" />
+      <view class="field-group field-inline-stack">
+        <view class="field-inline-head">
+          <view class="field-label field-inline-label">{{i18n.page.note}}</view>
+          <input class="input-control input-control-inline" placeholder="{{i18n.page.notePlaceholder}}" value="{{financeForm.note}}" bindinput="onInputFinanceNote" />
+        </view>
       </view>
     </view>
 
@@ -214,110 +210,124 @@
       </view>
     </view>
 
-    <view class="timeline-flow">
-      <view class="day-rail-floating {{stickyDayFeedbackActive ? 'day-rail-floating-feedback' : ''}}" wx:if="{{activeStickyDay}}" bindtap="openCalendar" data-day-key="{{activeStickyDay.day_key}}">
-        <view class="day-month">{{activeStickyDay.monthText}}</view>
-        <view class="day-number {{activeStickyDay.is_today ? 'day-number-today' : ''}}">{{activeStickyDay.dayText}}</view>
-        <view class="day-weekday">{{activeStickyDay.weekdayText}}</view>
-      </view>
-      <block wx:if="{{visibleDays.length}}">
-        <block wx:for="{{visibleDays}}" wx:key="day_key" wx:for-item="day" wx:for-index="dayIndex">
-          <view id="day-{{day.day_key}}" class="day-section">
-            <view class="day-rail-hit" data-day-key="{{day.day_key}}" bindtap="openCalendar">
-              <view class="day-rail" wx:if="{{!activeStickyDay || activeStickyDay.day_key !== day.day_key}}">
-                <view class="day-month">{{day.monthText}}</view>
-                <view class="day-number {{day.is_today ? 'day-number-today' : ''}}">{{day.dayText}}</view>
-                <view class="day-weekday">{{day.weekdayText}}</view>
-              </view>
-            </view>
-
-            <view class="day-body">
-              <view class="day-head">
-                <view class="day-title">{{day.titleText}}</view>
-                <view class="day-count">{{day.countText}}</view>
+    <view class="timeline-flow {{timelineSettleActive ? 'timeline-flow-settling' : ''}}">
+      <block wx:if="{{timelineMounted}}">
+        <view class="day-rail-floating {{stickyDayFeedbackActive ? 'day-rail-floating-feedback' : ''}}" wx:if="{{activeStickyDay}}" bindtap="openCalendar" data-day-key="{{activeStickyDay.day_key}}">
+          <view class="day-month">{{activeStickyDay.monthText}}</view>
+          <view class="day-number {{activeStickyDay.is_today ? 'day-number-today' : ''}}">{{activeStickyDay.dayText}}</view>
+          <view class="day-weekday">{{activeStickyDay.weekdayText}}</view>
+        </view>
+        <block wx:if="{{visibleDays.length}}">
+          <block wx:for="{{visibleDays}}" wx:key="day_key" wx:for-item="day" wx:for-index="dayIndex">
+            <view id="day-{{day.day_key}}" class="day-section">
+              <view class="day-rail-hit" data-day-key="{{day.day_key}}" bindtap="openCalendar">
+                <view class="day-rail" wx:if="{{!activeStickyDay || activeStickyDay.day_key !== day.day_key}}">
+                  <view class="day-month">{{day.monthText}}</view>
+                  <view class="day-number {{day.is_today ? 'day-number-today' : ''}}">{{day.dayText}}</view>
+                  <view class="day-weekday">{{day.weekdayText}}</view>
+                </view>
               </view>
 
-              <block wx:for="{{day.items}}" wx:key="idKey" wx:for-item="entry" wx:for-index="itemIndex">
-                <view class="swipe-row" id="{{entry.rowDomId}}">
-                  <view class="edit-bg" style="width: {{entry.editWidth}}px;">
-                    <view class="edit-action" data-day-index="{{dayIndex}}" data-item-index="{{itemIndex}}" bindtap="onTapEdit">{{i18n.common.edit}}</view>
-                  </view>
-                  <view class="left-action-bg" style="width: {{entry.leftActionWidth}}px;">
-                    <view class="left-action" data-day-index="{{dayIndex}}" data-item-index="{{itemIndex}}" bindtap="onTapCopy">{{i18n.page.copyAction}}</view>
-                  </view>
+              <view class="day-body">
+                <view class="day-head">
+                  <view class="day-title">{{day.titleText}}</view>
+                  <view class="day-count">{{day.countText}}</view>
+                </view>
 
-                  <view
-                    class="swipe-content"
-                    data-day-index="{{dayIndex}}"
-                    data-item-index="{{itemIndex}}"
-                    style="transform: translateX({{entry.offsetX}}px);"
-                    bindtouchstart="onSwipeStart"
-                    bindtouchmove="onSwipeMove"
-                    bindtouchend="onSwipeEnd"
-                  >
-                    <view class="card timeline-card timeline-card-{{entry.kind}} {{entry.isMiddleSegment ? 'timeline-card-compact' : ''}} {{entry.isMultiDaySchedule ? entry.multiDayCardClass : ''}}">
-                      <view class="schedule-segment-rail" wx:if="{{entry.isMultiDaySchedule}}">
-                        <view class="schedule-segment-line schedule-segment-line-top {{entry.hasSegmentBefore ? 'schedule-segment-line-on ' + entry.scheduleLineClass : ''}}"></view>
-                        <view class="schedule-segment-node {{entry.scheduleNodeClass}}"></view>
-                        <view class="schedule-segment-line schedule-segment-line-bottom {{entry.hasSegmentAfter ? 'schedule-segment-line-on ' + entry.scheduleLineClass : ''}}"></view>
+                <block wx:for="{{day.items}}" wx:key="idKey" wx:for-item="entry" wx:for-index="itemIndex">
+                  <view class="swipe-row" id="{{entry.rowDomId}}">
+                    <view class="edit-bg" style="width: {{entry.editWidth}}px;">
+                      <view class="edit-action" style="transform: scale({{entry.rightActionScale || 0.86}});" data-day-index="{{dayIndex}}" data-item-index="{{itemIndex}}" bindtap="onTapCopy">{{i18n.page.copyAction}}</view>
+                    </view>
+                    <view class="left-action-bg" style="width: {{entry.leftActionWidth}}px;">
+                      <view class="left-action" style="transform: scale({{entry.leftActionScale || 0.86}});" data-day-index="{{dayIndex}}" data-item-index="{{itemIndex}}" bindtap="onTapDelete">{{i18n.common.delete}}</view>
+                    </view>
+
+                    <view
+                      class="swipe-content"
+                      data-day-index="{{dayIndex}}"
+                      data-item-index="{{itemIndex}}"
+                      style="transform: translateX({{entry.offsetX}}px);"
+                      bindtouchstart="onSwipeStart"
+                      bindtouchmove="onSwipeMove"
+                      bindtouchend="onSwipeEnd"
+                      bindtap="onCardTap"
+                      bindlongpress="onCardLongPress"
+                    >
+                      <view class="card timeline-card timeline-card-{{entry.kind}} {{entry.isMiddleSegment ? 'timeline-card-compact' : ''}} {{entry.isMultiDaySchedule ? entry.multiDayCardClass : ''}} {{entry.isSelected ? 'timeline-card-selected' : ''}} {{entry.isCompleted ? 'timeline-card-completed' : ''}}">
+                        <view class="timeline-card-select" wx:if="{{multiSelectMode}}">
+                          <view class="timeline-card-select-dot {{entry.isSelected ? 'timeline-card-select-dot-on' : ''}}"></view>
+                        </view>
+                        <view class="schedule-segment-rail" wx:if="{{entry.isMultiDaySchedule}}">
+                          <view class="schedule-segment-line schedule-segment-line-top {{entry.hasSegmentBefore ? 'schedule-segment-line-on ' + entry.scheduleLineClass : ''}}"></view>
+                          <view class="schedule-segment-node {{entry.scheduleNodeClass}}"></view>
+                          <view class="schedule-segment-line schedule-segment-line-bottom {{entry.hasSegmentAfter ? 'schedule-segment-line-on ' + entry.scheduleLineClass : ''}}"></view>
+                        </view>
+
+                        <view wx:if="{{entry.isMiddleSegment}}" class="schedule-compact-row">
+                          <view class="schedule-compact-title">{{entry.titleText}}</view>
+                          <view class="kind-pill kind-pill-{{entry.kind}} schedule-compact-pill">{{entry.kindLabel}}</view>
+                        </view>
+
+                        <block wx:else>
+                          <view class="card-top">
+                            <view class="card-head">
+                              <view class="card-title">{{entry.titleText}}</view>
+                              <view class="kind-pill kind-pill-{{entry.kind}}">{{entry.kindLabel}}</view>
+                            </view>
+                            <view wx:if="{{entry.amountText}}" class="amount-text amount-text-{{entry.kind}}">{{entry.amountText}}</view>
+                          </view>
+
+                          <view class="meta-row">
+                            <view class="meta-chip">{{entry.subtitleText}}</view>
+                            <view class="meta-chip meta-chip-category meta-chip-category-{{entry.kind}}" wx:if="{{entry.metaSecondaryText}}">{{entry.metaSecondaryText}}</view>
+                          </view>
+
+                          <view class="detail-grid" wx:if="{{entry.hasLocation || entry.hasNote}}">
+                            <view class="detail-cell" wx:if="{{entry.hasLocation}}">
+                              <view class="detail-label">{{i18n.page.place}}</view>
+                              <view class="detail-value">{{entry.locationText}}</view>
+                            </view>
+                            <view class="detail-cell detail-cell-full" wx:if="{{entry.hasNote}}">
+                              <view class="detail-label">{{i18n.page.note}}</view>
+                              <view class="detail-value">{{entry.noteText}}</view>
+                            </view>
+                          </view>
+                        </block>
                       </view>
-
-                      <view wx:if="{{entry.isMiddleSegment}}" class="schedule-compact-row">
-                        <view class="schedule-compact-title {{entry.scheduleCompactTitleClass}}">{{entry.titleText}}</view>
-                        <view class="kind-pill kind-pill-{{entry.kind}} schedule-compact-pill">{{entry.kindLabel}}</view>
-                      </view>
-
-                      <block wx:else>
-                        <view class="card-top">
-                          <view class="card-head">
-                            <view class="card-title">{{entry.titleText}}</view>
-                            <view class="kind-pill kind-pill-{{entry.kind}}">{{entry.kindLabel}}</view>
-                          </view>
-                          <view wx:if="{{entry.amountText}}" class="amount-text amount-text-{{entry.kind}}">{{entry.amountText}}</view>
-                        </view>
-
-                        <view class="meta-row">
-                          <view class="meta-chip">{{entry.subtitleText}}</view>
-                          <view class="meta-chip meta-chip-category meta-chip-category-{{entry.kind}}" wx:if="{{entry.metaSecondaryText}}">{{entry.metaSecondaryText}}</view>
-                        </view>
-
-                        <view class="detail-grid" wx:if="{{entry.hasLocation || entry.hasNote}}">
-                          <view class="detail-cell" wx:if="{{entry.hasLocation}}">
-                            <view class="detail-label">{{i18n.page.place}}</view>
-                            <view class="detail-value">{{entry.locationText}}</view>
-                          </view>
-                          <view class="detail-cell detail-cell-full" wx:if="{{entry.hasNote}}">
-                            <view class="detail-label">{{i18n.page.note}}</view>
-                            <view class="detail-value">{{entry.noteText}}</view>
-                          </view>
-                        </view>
-                      </block>
                     </view>
                   </view>
-                </view>
-              </block>
+                </block>
+              </view>
             </view>
-          </view>
+          </block>
         </block>
+
+        <view wx:else class="card empty-card timeline-empty">
+          <view class="empty-title">{{i18n.page.emptyTitle}}</view>
+          <view class="empty-text">{{i18n.page.emptyText}}</view>
+          <view class="timeline-empty-magic">+</view>
+        </view>
+
+        <view class="timeline-tail-spacer" wx:if="{{visibleDays.length}}"></view>
       </block>
-
-      <view wx:else class="card empty-card timeline-empty">
-        <view class="empty-title">{{i18n.page.emptyTitle}}</view>
-        <view class="empty-text">{{i18n.page.emptyText}}</view>
-      </view>
-
-      <view class="timeline-tail-spacer" wx:if="{{visibleDays.length}}"></view>
     </view>
   </view>
 
   <view class="floating-actions">
+    <view class="floating-bulk-bar" wx:if="{{multiSelectMode}}">
+      <view class="floating-bulk-count">{{selectedItemKeys.length}}</view>
+      <view class="floating-pop-item floating-pop-item-income" bindtap="bulkDuplicateSelected">{{i18n.page.copyAction}}</view>
+      <view class="floating-pop-item floating-pop-item-expense" bindtap="bulkDeleteSelected">{{i18n.common.delete}}</view>
+      <view class="floating-pop-item floating-pop-item-schedule" bindtap="clearMultiSelectMode">{{i18n.common.cancel}}</view>
+    </view>
     <view class="floating-anchor">
       <view class="floating-pop" wx:if="{{isFilterOpen}}">
         <view class="floating-pop-item floating-pop-item-schedule {{activeKindFilter === 'schedule' ? 'floating-pop-item-active' : ''}}" data-kind="schedule" bindtap="selectKindFilter">{{i18n.page.filterActionSchedule}}</view>
         <view class="floating-pop-item floating-pop-item-income {{activeKindFilter === 'income' ? 'floating-pop-item-active' : ''}}" data-kind="income" bindtap="selectKindFilter">{{i18n.page.filterActionIncome}}</view>
         <view class="floating-pop-item floating-pop-item-expense {{activeKindFilter === 'expense' ? 'floating-pop-item-active' : ''}}" data-kind="expense" bindtap="selectKindFilter">{{i18n.page.filterActionExpense}}</view>
       </view>
-      <view class="floating-fab floating-fab-filter {{isFilterOpen ? 'floating-fab-open' : ''}}" bindtap="toggleFilterMenu">
+      <view class="floating-fab floating-fab-filter nintendo-press {{isFilterOpen ? 'floating-fab-open' : ''}}" bindtap="toggleFilterMenu">
         <image class="fab-icon-image" src="../../assets/icons/filter-funnel.svg" mode="aspectFit" />
       </view>
     </view>
@@ -328,7 +338,7 @@
         <view class="floating-pop-item floating-pop-item-expense" bindtap="openCreateExpense">{{i18n.page.createExpense}}</view>
         <view class="floating-pop-item floating-pop-item-income" bindtap="openCreateIncome">{{i18n.page.createIncome}}</view>
       </view>
-      <view class="floating-fab floating-fab-plus {{isQuickCreateOpen ? 'floating-fab-open' : ''}}" bindtap="toggleQuickCreate">
+      <view class="floating-fab floating-fab-plus floating-fab-plus-glow nintendo-press {{isQuickCreateOpen ? 'floating-fab-open' : ''}}" bindtap="toggleQuickCreate">
         <image class="fab-icon-image" src="../../assets/icons/plus.svg" mode="aspectFit" />
       </view>
     </view>

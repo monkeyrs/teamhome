@@ -85,6 +85,12 @@ validate_backend_security_config() {
     issues+=("ENABLE_DEBUG_ENDPOINTS must be false.")
   fi
 
+  local assistant_engine
+  assistant_engine="$(read_env_value ASSISTANT_ENGINE langgraph)"
+  if [[ "${assistant_engine,,}" != "langgraph" ]]; then
+    issues+=("ASSISTANT_ENGINE must be langgraph.")
+  fi
+
   if (( ${#issues[@]} > 0 )); then
     printf 'Unsafe production backend config in backend/.env: %s\n' "${issues[*]}" >&2
     exit 1
@@ -98,10 +104,12 @@ export_compose_env() {
   export POSTGRES_USER
   export POSTGRES_PASSWORD
   export DATABASE_URL
+  export ASSISTANT_ENGINE
 
   POSTGRES_DB="$(read_env_value POSTGRES_DB teamhome)"
   POSTGRES_USER="$(read_env_value POSTGRES_USER admin)"
   POSTGRES_PASSWORD="$(read_env_value POSTGRES_PASSWORD admin)"
+  ASSISTANT_ENGINE="$(read_env_value ASSISTANT_ENGINE langgraph)"
 
   local default_database_url
   default_database_url="postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
@@ -165,6 +173,7 @@ echo "[3/4] show container status"
 docker compose -f "${COMPOSE_FILE}" ps
 run_in_api_container "alembic current" && echo "Database migrations: current" || echo "Database migrations: FAILED"
 echo "Demo seed mode: $(read_demo_seed_mode)"
+echo "Assistant engine: ${ASSISTANT_ENGINE,,}"
 
 echo "[4/4] check api health"
 curl -fsS http://127.0.0.1:8000/openapi.json >/dev/null

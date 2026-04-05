@@ -36,3 +36,9 @@ docker compose up -d --build
 - 如果 API 起不来，先看 `docker compose logs api` 和 Alembic 迁移状态。
 - 如果 LangGraph 服务起不来，检查 `backend/langgraph.json`、依赖安装和 `langgraph` 容器日志。
 - 正式环境若关闭调试端点，前端不应再依赖旧的调试 UI 路径。
+
+## 5. 2026-04-04 UI 自测关注点
+
+1. 进入助手首页，观察底部 LangGraph 示意图是否按“光点先到位，再亮灯，再移动到下一节点”的节奏循环。
+2. 六个节点的高亮应与光点驻留窗口同步，第二行说明文字在亮灯时应切到白色。
+3. 若要验证最新 demo 数据，先运行 `scripts/restart-backend.ps1`，确认 demo seed 已同步，再查看 `teamhome开发` 团队。

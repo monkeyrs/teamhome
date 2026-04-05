@@ -72,4 +72,19 @@ docker compose -f docker-compose.prod.yml up -d --build
 - 检查：`python scripts/ensure_utf8.py --check --root .`
 - 修复：`python scripts/ensure_utf8.py --root .`
 
+## 2026-04-04 更新
+
+- 小程序工程根目录继续以 `frontend/` 为准，全局样式入口为 `frontend/app.wxss`。
+- 时间线页继续使用统一读模型；删除、批量删除、复制新增后，列表会按最新数据重新吸附并刷新锚点。
+- 助手首页底部的 LangGraph 示意图继续作为主展示入口，调试与验证请优先参考 [docs/langgraph-debug.md](C:/Users/monke/Desktop/WeCount/teamhome/docs/langgraph-debug.md)。
+- 演示团队 `teamhome开发` 已补充 2026-04-03 与 2026-04-04 的迭代事项，重启后端会自动同步 demo seed。
+- Windows 本地启动推荐使用 `scripts/start-backend.ps1`，重启推荐使用 `scripts/restart-backend.ps1`。
+
+## 发版前确认
+
+- `backend/.env` 或服务器上的生产环境变量里，确认 `ASSISTANT_ENGINE=langgraph`。
+- 正式环境确认 `ENABLE_DEBUG_ENDPOINTS=false`，不要带这轮临时调试日志和调试入口上线。
+- 正式环境确认 `ALLOW_INSECURE_DEV_AUTH=false`、`ENVIRONMENT=production`、`JWT_SECRET` 为非默认强密钥。
+- 服务器部署步骤与检查项请直接参考 [docs/deploy-monkeyrs.md](C:/Users/monke/Desktop/WeCount/teamhome/docs/deploy-monkeyrs.md)。
+
 脚本会把源码和项目文档统一为 UTF-8 无 BOM，并跳过 `.venv`、`node_modules`、`.git` 等目录。

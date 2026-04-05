@@ -1,8 +1,12 @@
 const { bootstrapSession, getCurrentTeamState } = require("../../utils/bootstrap");
 const { applyPageLocale, translateMessage } = require("../../utils/i18n");
-const { getDataVersion, markDataDirty } = require("../../utils/data-sync");
+const { getDataVersion } = require("../../utils/data-sync");
 const { triggerFeedback } = require("../../utils/feedback");
 const scheduleApi = require("./modules/api");
+const {
+  buildFinancePayload,
+  buildSchedulePayload
+} = require("./modules/composer");
 const {
   buildComposerClosedState,
   buildFinanceCreateComposerState,
@@ -31,6 +35,16 @@ const {
   monthStartFromKey
 } = require("./modules/timeline");
 const {
+  afterMutation: runAfterMutation,
+  nextTickAsync,
+  remountTimelineView,
+  removeDeletedItemLocally,
+  removeTimelineEntriesLocally,
+  resolveMutationFocusDay,
+  settleTimelineAfterMutation,
+  triggerTimelineSettle
+} = require("./modules/timeline-mutations");
+const {
   buildSwipeMoveState,
   closeSwipeRows,
   resolveSwipeEnd
@@ -45,6 +59,7 @@ const DIRECTION_LOCK_THRESHOLD = 12;
 const PAST_WINDOW_DAYS = 120;
 const FUTURE_WINDOW_DAYS = 90;
 const DAY_RAIL_STICKY_TOP = 132;
+const MAX_COMPACT_SUGGESTIONS = 7;
 
 Page({
   data: {
@@ -77,11 +92,17 @@ Page({
     scheduleForm: buildEmptyScheduleForm(),
     financeForm: buildEmptyFinanceForm(),
     placeSuggestions: [],
+    compactPlaceSuggestions: [],
     commonCategories: [],
     categorySuggestions: [],
+    compactCategorySuggestions: [],
     swipeStartX: 0,
     swipeStartY: 0,
     swipeDirection: "",
+    multiSelectMode: false,
+    selectedItemKeys: [],
+    timelineMounted: true,
+    timelineSettleActive: false,
     locale: "zh-CN",
     i18n: {
       app: {},
@@ -92,8 +113,7 @@ Page({
   },
 
   onLoad() {
-    this.pendingDeleteDayKey = "";
-    this.pendingDeleteRowHeight = 0;
+    this.pendingTimelineAnchor = null;
   },
 
   onPageScroll(event) {
@@ -133,13 +153,15 @@ Page({
   },
 
   applyLocale() {
+    const categorySuggestions = this.buildCategorySuggestions(
+      this.data.financeForm.category,
+      this.data.financeForm.type
+    );
     applyPageLocale(this, "schedule");
     this.setData({
-      visibleDays: this.buildVisibleDays(this.data.days, this.data.activeKindFilter),
-      categorySuggestions: this.buildCategorySuggestions(
-        this.data.financeForm.category,
-        this.data.financeForm.type
-      ),
+      visibleDays: this.applySelectionState(this.buildVisibleDays(this.data.days, this.data.activeKindFilter)),
+      categorySuggestions,
+      compactCategorySuggestions: this.limitCompactSuggestions(categorySuggestions),
       activeStickyDay: null
     }, () => {
       this.rebuildStickyDayAnchors();
@@ -183,8 +205,10 @@ Page({
         scheduleForm: buildEmptyScheduleForm(today),
         financeForm: buildEmptyFinanceForm(new Date()),
         placeSuggestions: [],
+        compactPlaceSuggestions: [],
         commonCategories: [],
-        categorySuggestions: []
+        categorySuggestions: [],
+        compactCategorySuggestions: []
       });
       if (!teamId) {
         this.daySectionAnchors = [];
@@ -244,7 +268,7 @@ Page({
     const days = Array.isArray(data && data.days) ? data.days : [];
     this.setData({
       days,
-      visibleDays: this.buildVisibleDays(days, this.data.activeKindFilter),
+      visibleDays: this.applySelectionState(this.buildVisibleDays(days, this.data.activeKindFilter)),
       activeStickyDay: null
     });
     wx.nextTick(() => {
@@ -255,12 +279,14 @@ Page({
 
   async loadCommonCategories(teamId) {
     const categories = await scheduleApi.listFinanceCategories(teamId);
+    const categorySuggestions = this.buildCategorySuggestions(
+      this.data.financeForm.category,
+      this.data.financeForm.type
+    );
     this.setData({
       commonCategories: Array.isArray(categories) ? categories : [],
-      categorySuggestions: this.buildCategorySuggestions(
-        this.data.financeForm.category,
-        this.data.financeForm.type
-      )
+      categorySuggestions,
+      compactCategorySuggestions: this.limitCompactSuggestions(categorySuggestions)
     });
   },
 
@@ -268,10 +294,18 @@ Page({
     if (!teamId) return;
     try {
       const places = await scheduleApi.listPlaces(teamId, query);
-      this.setData({ placeSuggestions: Array.isArray(places) ? places : [] });
+      const nextPlaces = Array.isArray(places) ? places : [];
+      this.setData({
+        placeSuggestions: nextPlaces,
+        compactPlaceSuggestions: this.limitCompactSuggestions(nextPlaces)
+      });
     } catch (err) {
-      this.setData({ placeSuggestions: [] });
+      this.setData({ placeSuggestions: [], compactPlaceSuggestions: [] });
     }
+  },
+
+  limitCompactSuggestions(items = []) {
+    return (items || []).slice(0, MAX_COMPACT_SUGGESTIONS);
   },
 
   presetCategories(type) {
@@ -419,46 +453,28 @@ Page({
     });
   },
 
-  captureDeleteContext(item, dayKey = "") {
-    this.pendingDeleteDayKey = dayKey || "";
-    this.pendingDeleteRowHeight = 0;
-    if (!item || !item.rowDomId) return;
-
-    const query = wx.createSelectorQuery();
-    query.select(`#${item.rowDomId}`).boundingClientRect();
-    query.exec((res) => {
-      const rect = Array.isArray(res) ? res[0] : null;
-      if (!rect || !rect.height) return;
-      this.pendingDeleteRowHeight = rect.height + 8;
-    });
+  nextTickAsync() {
+    return nextTickAsync();
   },
 
-  compensateScrollAfterDelete(deletedDayKey = "") {
-    const visibleDays = this.data.visibleDays || [];
-    const rowHeight = Number(this.pendingDeleteRowHeight || 0);
-    this.pendingDeleteRowHeight = 0;
+  triggerTimelineSettle() {
+    triggerTimelineSettle(this);
+  },
 
-    if (rowHeight > 0) {
-      const query = wx.createSelectorQuery();
-      query.selectViewport().scrollOffset();
-      query.exec((res) => {
-        const viewport = Array.isArray(res) ? res[0] : null;
-        if (!viewport) return;
-        const nextTop = Math.max((viewport.scrollTop || 0) - rowHeight, 0);
-        wx.pageScrollTo({ scrollTop: nextTop, duration: 0 });
-        this.refreshStickyDay(nextTop);
-      });
-      return;
-    }
+  async remountTimelineView(options = {}) {
+    await remountTimelineView(this, options);
+  },
 
-    if (!visibleDays.length || !deletedDayKey) return;
-    const targetDayKey = visibleDays.some((day) => day.day_key === deletedDayKey)
-      ? deletedDayKey
-      : this.resolveNearestTimelineDayKey(deletedDayKey, visibleDays);
-    if (!targetDayKey) return;
-    wx.nextTick(() => {
-      this.scrollToDay(targetDayKey, { duration: 0, silent: true });
-    });
+  resolveMutationFocusDay(options = {}) {
+    return resolveMutationFocusDay(options);
+  },
+
+  async settleTimelineAfterMutation(options = {}) {
+    await settleTimelineAfterMutation(this, options);
+  },
+
+  removeTimelineEntriesLocally(entries = [], options = {}) {
+    removeTimelineEntriesLocally(this, entries, options);
   },
 
   rebuildStickyDayAnchors() {
@@ -530,6 +546,7 @@ Page({
   },
 
   toggleFilterMenu() {
+    if (this.data.multiSelectMode) return;
     this.setData({
       isFilterOpen: !this.data.isFilterOpen,
       isQuickCreateOpen: false
@@ -550,6 +567,9 @@ Page({
   },
 
   openCreateSchedule() {
+    if (this.data.multiSelectMode) {
+      this.clearMultiSelectMode();
+    }
     if (this.currentTeamReadonly()) {
       this.showReadonlyTip();
       return;
@@ -568,16 +588,23 @@ Page({
   },
 
   openFinanceComposer(type) {
+    if (this.data.multiSelectMode) {
+      this.clearMultiSelectMode();
+    }
     if (this.currentTeamReadonly()) {
       this.showReadonlyTip();
       return;
     }
     const now = new Date();
+    const categorySuggestions = this.buildCategorySuggestions("", type);
     this.setData(buildFinanceCreateComposerState({
       type,
       now,
-      categorySuggestions: this.buildCategorySuggestions("", type)
+      categorySuggestions
     }));
+    this.setData({
+      compactCategorySuggestions: this.limitCompactSuggestions(categorySuggestions)
+    });
     this.loadPlaceSuggestions((this.currentTeam() || {}).id, "");
   },
 
@@ -586,7 +613,6 @@ Page({
       this.showReadonlyTip();
       return;
     }
-    this.captureDeleteContext(item, dayKey);
     this.setData(buildScheduleEditComposerState(item));
     this.loadPlaceSuggestions((this.currentTeam() || {}).id, item.location || "");
   },
@@ -605,13 +631,16 @@ Page({
       this.showReadonlyTip();
       return;
     }
-    this.captureDeleteContext(item, dayKey);
     const type = item.kind === "income" ? "income" : "expense";
     const category = item.category || "";
+    const categorySuggestions = this.buildCategorySuggestions(category, type);
     this.setData(buildFinanceEditComposerState(
       item,
-      this.buildCategorySuggestions(category, type)
+      categorySuggestions
     ));
+    this.setData({
+      compactCategorySuggestions: this.limitCompactSuggestions(categorySuggestions)
+    });
     this.loadPlaceSuggestions((this.currentTeam() || {}).id, item.location || "");
   },
 
@@ -621,20 +650,24 @@ Page({
       return;
     }
     const type = item.kind === "income" ? "income" : "expense";
+    const categorySuggestions = this.buildCategorySuggestions(item.category || "", type);
     this.setData(buildFinanceDuplicateComposerState(
       item,
-      this.buildCategorySuggestions(item.category || "", type)
+      categorySuggestions
     ));
+    this.setData({
+      compactCategorySuggestions: this.limitCompactSuggestions(categorySuggestions)
+    });
     this.loadPlaceSuggestions((this.currentTeam() || {}).id, item.location || "");
   },
 
   closeComposer() {
-    this.pendingDeleteDayKey = "";
-    this.pendingDeleteRowHeight = 0;
+    this.pendingTimelineAnchor = null;
     this.setData(buildComposerClosedState(new Date()));
   },
 
   toggleQuickCreate() {
+    if (this.data.multiSelectMode) return;
     this.setData({
       isQuickCreateOpen: !this.data.isQuickCreateOpen,
       isFilterOpen: false
@@ -653,11 +686,6 @@ Page({
     const value = event.detail.value;
     this.setData({ "scheduleForm.locationText": value });
     this.loadPlaceSuggestions((this.currentTeam() || {}).id, value);
-  },
-
-  clearScheduleLocation() {
-    this.setData({ "scheduleForm.locationText": "" });
-    this.loadPlaceSuggestions((this.currentTeam() || {}).id, "");
   },
 
   onPickPlace(event) {
@@ -706,9 +734,11 @@ Page({
   onFinanceTypeChange(event) {
     const type = event.currentTarget.dataset.type;
     if (!type) return;
+    const categorySuggestions = this.buildCategorySuggestions(this.data.financeForm.category, type);
     this.setData({
       "financeForm.type": type,
-      categorySuggestions: this.buildCategorySuggestions(this.data.financeForm.category, type)
+      categorySuggestions,
+      compactCategorySuggestions: this.limitCompactSuggestions(categorySuggestions)
     });
   },
 
@@ -722,18 +752,22 @@ Page({
 
   onInputCategory(event) {
     const value = event.detail.value;
+    const categorySuggestions = this.buildCategorySuggestions(value, this.data.financeForm.type);
     this.setData({
       "financeForm.category": value,
-      categorySuggestions: this.buildCategorySuggestions(value, this.data.financeForm.type)
+      categorySuggestions,
+      compactCategorySuggestions: this.limitCompactSuggestions(categorySuggestions)
     });
   },
 
   onPickCategory(event) {
     const category = event.currentTarget.dataset.category;
     if (!category) return;
+    const categorySuggestions = this.buildCategorySuggestions(category, this.data.financeForm.type);
     this.setData({
       "financeForm.category": category,
-      categorySuggestions: this.buildCategorySuggestions(category, this.data.financeForm.type)
+      categorySuggestions,
+      compactCategorySuggestions: this.limitCompactSuggestions(categorySuggestions)
     });
   },
 
@@ -743,56 +777,123 @@ Page({
     this.loadPlaceSuggestions((this.currentTeam() || {}).id, value);
   },
 
-  clearFinanceLocation() {
-    this.setData({ "financeForm.locationText": "" });
-    this.loadPlaceSuggestions((this.currentTeam() || {}).id, "");
-  },
-
   onInputFinanceNote(event) {
     this.setData({ "financeForm.note": event.detail.value });
   },
 
-  async afterMutation(teamId, scopes) {
-    markDataDirty({ teamId, scopes });
-    await Promise.all([
-      this.loadTimeline(teamId),
-      this.loadCommonCategories(teamId),
-      this.loadPlaceSuggestions(teamId, "")
-    ]);
+  async afterMutation(teamId, scopes, options = {}) {
+    await runAfterMutation(this, teamId, scopes, options);
+  },
+
+  applySelectionState(visibleDays = [], selectedItemKeys = this.data.selectedItemKeys || []) {
+    const selected = new Set(selectedItemKeys || []);
+    return (visibleDays || []).map((day) => ({
+      ...day,
+      items: (day.items || []).map((item) => ({
+        ...item,
+        isSelected: selected.has(item.idKey)
+      }))
+    }));
+  },
+
+  clearMultiSelectMode() {
+    const selectedItemKeys = [];
     this.setData({
-      scheduleSyncVersion: getDataVersion("schedule", teamId),
-      financeSyncVersion: getDataVersion("finance", teamId)
+      multiSelectMode: false,
+      selectedItemKeys,
+      visibleDays: this.applySelectionState(closeSwipeRows(this.data.visibleDays), selectedItemKeys)
     });
   },
 
-  removeDeletedItemLocally(editingId, composerKind, deletedDayKey = "") {
-    const targetId = `${editingId || ""}`;
-    if (!targetId) return;
-
-    const nextDays = (this.data.days || [])
-      .map((day) => ({
-        ...day,
-        items: (day.items || []).filter((item) => {
-          if (`${item.source_id || ""}` !== targetId) {
-            return true;
-          }
-          if (composerKind === "schedule") {
-            return item.kind !== "schedule";
-          }
-          return false;
-        })
-      }))
-      .filter((day) => Array.isArray(day.items) && day.items.length);
-
-    this.daySectionAnchors = [];
+  toggleMultiSelectItem(dayIndex, itemIndex) {
+    const day = this.data.visibleDays[dayIndex];
+    const item = day && day.items[itemIndex];
+    if (!item) return;
+    const selected = new Set(this.data.selectedItemKeys || []);
+    if (selected.has(item.idKey)) {
+      selected.delete(item.idKey);
+    } else {
+      selected.add(item.idKey);
+    }
+    const selectedItemKeys = Array.from(selected);
     this.setData({
-      days: nextDays,
-      visibleDays: this.buildVisibleDays(nextDays, this.data.activeKindFilter),
-      activeStickyDay: null
-    }, () => {
-      this.rebuildStickyDayAnchors();
-      this.compensateScrollAfterDelete(deletedDayKey);
+      multiSelectMode: selectedItemKeys.length > 0,
+      selectedItemKeys,
+      visibleDays: this.applySelectionState(this.data.visibleDays, selectedItemKeys)
     });
+  },
+
+  enterMultiSelectMode(dayIndex, itemIndex) {
+    const day = this.data.visibleDays[dayIndex];
+    const item = day && day.items[itemIndex];
+    if (!item) return;
+    const selectedItemKeys = [item.idKey];
+    this.setData({
+      multiSelectMode: true,
+      selectedItemKeys,
+      isQuickCreateOpen: false,
+      isFilterOpen: false,
+      visibleDays: this.applySelectionState(closeSwipeRows(this.data.visibleDays), selectedItemKeys)
+    });
+  },
+
+  resolveSelectedEntries() {
+    const selected = new Set(this.data.selectedItemKeys || []);
+    const familyKeys = new Set();
+    const entries = [];
+    (this.data.visibleDays || []).forEach((day) => {
+      (day.items || []).forEach((item) => {
+        const familyKey = `${item.kind}-${item.source_id}`;
+        if (selected.has(item.idKey) && !familyKeys.has(familyKey)) {
+          familyKeys.add(familyKey);
+          entries.push(item);
+        }
+      });
+    });
+    return entries;
+  },
+
+  async duplicateTimelineEntry(teamId, item) {
+    if (item.kind === "schedule") {
+      return scheduleApi.createSchedule(teamId, buildSchedulePayload({
+        title: item.title || "",
+        description: item.description || "",
+        locationText: item.location || "",
+        is_all_day: !!item.is_all_day,
+        date: (item.start_time || item.occur_at || "").slice(0, 10),
+        start_clock: (item.start_time || item.occur_at || "").slice(11, 16) || "09:00",
+        end_date: (item.end_time || item.start_time || item.occur_at || "").slice(0, 10),
+        end_clock: (item.end_time || item.start_time || item.occur_at || "").slice(11, 16) || "10:00"
+      }));
+    }
+
+    return scheduleApi.createFinance(teamId, buildFinancePayload({
+      amount: item.amount ? `${item.amount}` : "",
+      type: item.kind === "income" ? "income" : "expense",
+      occurredDate: (item.occur_at || "").slice(0, 10),
+      occurredTime: (item.occur_at || "").slice(11, 16) || "09:00",
+      category: item.category || "",
+      locationText: item.location || "",
+      note: item.note || ""
+    }));
+  },
+
+  async deleteTimelineEntry(item) {
+    if (item.kind === "schedule") {
+      return scheduleApi.deleteSchedule(item.source_id);
+    }
+    return scheduleApi.deleteFinance(item.source_id);
+  },
+
+  clearPendingCardTap() {
+    if (this._pendingCardTapTimer) {
+      clearTimeout(this._pendingCardTapTimer);
+      this._pendingCardTapTimer = null;
+    }
+  },
+
+  removeDeletedItemLocally(editingId, composerKind) {
+    removeDeletedItemLocally(this, editingId, composerKind);
   },
 
   async submitComposer() {
@@ -815,7 +916,7 @@ Page({
   },
 
   closeSwipeRows() {
-    this.setData({ visibleDays: closeSwipeRows(this.data.visibleDays) });
+    this.setData({ visibleDays: this.applySelectionState(closeSwipeRows(this.data.visibleDays)) });
   },
 
   openEditorByIndex(dayIndex, itemIndex) {
@@ -849,6 +950,7 @@ Page({
   },
 
   onSwipeMove(event) {
+    if (this.data.multiSelectMode) return;
     const dayIndex = Number(event.currentTarget.dataset.dayIndex);
     const itemIndex = Number(event.currentTarget.dataset.itemIndex);
     if (Number.isNaN(dayIndex) || Number.isNaN(itemIndex)) return;
@@ -868,19 +970,23 @@ Page({
     }
     if (direction !== "horizontal") return;
 
-    this.setData({
-      visibleDays: buildSwipeMoveState({
-        visibleDays: this.data.visibleDays,
-        dayIndex,
-        itemIndex,
-        deltaX,
-        laziness: SWIPE_LAZINESS,
-        maxSwipe: MAX_SWIPE
-      })
+    const visibleDays = buildSwipeMoveState({
+      visibleDays: this.data.visibleDays,
+      dayIndex,
+      itemIndex,
+      deltaX,
+      laziness: SWIPE_LAZINESS,
+      maxSwipe: MAX_SWIPE
     });
+    const item = visibleDays[dayIndex] && visibleDays[dayIndex].items[itemIndex];
+    if (item && item.swipeActionReady) {
+      triggerFeedback(this, { hapticKey: `schedule-swipe-${dayIndex}-${itemIndex}` });
+    }
+    this.setData({ visibleDays });
   },
 
   onSwipeEnd(event) {
+    if (this.data.multiSelectMode) return;
     const dayIndex = Number(event.currentTarget.dataset.dayIndex);
     const itemIndex = Number(event.currentTarget.dataset.itemIndex);
     if (Number.isNaN(dayIndex) || Number.isNaN(itemIndex)) return;
@@ -902,8 +1008,10 @@ Page({
       this.duplicateByIndex(dayIndex, itemIndex);
       return;
     }
-    if (result.action === "edit") {
-      this.openEditorByIndex(dayIndex, itemIndex);
+    if (result.action === "delete") {
+      const day = this.data.visibleDays[dayIndex];
+      const item = day && day.items[itemIndex];
+      this.confirmDeleteEntry(item, day && day.day_key);
     }
   },
 
@@ -915,12 +1023,171 @@ Page({
     this.closeSwipeRows();
   },
 
-  onTapEdit(event) {
+  onTapDelete(event) {
     const dayIndex = Number(event.currentTarget.dataset.dayIndex);
     const itemIndex = Number(event.currentTarget.dataset.itemIndex);
     if (Number.isNaN(dayIndex) || Number.isNaN(itemIndex)) return;
-    this.openEditorByIndex(dayIndex, itemIndex);
+    const day = this.data.visibleDays[dayIndex];
+    const item = day && day.items[itemIndex];
+    this.confirmDeleteEntry(item, day && day.day_key);
     this.closeSwipeRows();
+  },
+
+  async confirmDeleteEntry(item, deletedDayKey = "") {
+    if (!item) return;
+    const isSchedule = item.kind === "schedule";
+    wx.showModal({
+      title: this.t(isSchedule ? "page.deleteTitleSchedule" : "page.deleteTitleFinance"),
+      content: this.t(isSchedule ? "page.deleteContentSchedule" : "page.deleteContentFinance"),
+      success: async (res) => {
+        if (!res.confirm) return;
+        try {
+          this.removeTimelineEntriesLocally([item]);
+          await this.deleteTimelineEntry(item);
+          await this.afterMutation((this.currentTeam() || {}).id, [isSchedule ? "schedule" : "finance"]);
+          wx.showToast({ title: this.t("common.delete"), icon: "success" });
+        } catch (err) {
+          await this.afterMutation((this.currentTeam() || {}).id, [isSchedule ? "schedule" : "finance"]);
+          wx.showToast({ title: this.t("common.deleteFailed"), icon: "none" });
+        }
+      }
+    });
+  },
+
+  onCardLongPress(event) {
+    if (this.currentTeamReadonly()) {
+      this.showReadonlyTip();
+      return;
+    }
+    const dayIndex = Number(event.currentTarget.dataset.dayIndex);
+    const itemIndex = Number(event.currentTarget.dataset.itemIndex);
+    if (Number.isNaN(dayIndex) || Number.isNaN(itemIndex)) return;
+    this.clearPendingCardTap();
+    this._ignoreCardTapUntil = Date.now() + 260;
+    this.enterMultiSelectMode(dayIndex, itemIndex);
+    triggerFeedback(this, { hapticKey: "schedule-multiselect-enter" });
+  },
+
+  async toggleScheduleCompleted(dayIndex, itemIndex) {
+    const day = this.data.visibleDays[dayIndex];
+    const item = day && day.items[itemIndex];
+    if (!item) return;
+    if (item.kind !== "schedule") {
+      this.openEditorByIndex(dayIndex, itemIndex);
+      return;
+    }
+    if (this.currentTeamReadonly()) {
+      this.showReadonlyTip();
+      return;
+    }
+
+    const nextStatus = item.isCompleted ? "pending" : "completed";
+    try {
+      await scheduleApi.updateSchedule(item.source_id, {
+        ...buildSchedulePayload({
+          title: item.title || "",
+          description: item.description || "",
+          locationText: item.location || "",
+          is_all_day: !!item.is_all_day,
+          date: (item.start_time || item.occur_at || "").slice(0, 10),
+          start_clock: (item.start_time || item.occur_at || "").slice(11, 16) || "09:00",
+          end_date: (item.end_time || item.start_time || item.occur_at || "").slice(0, 10),
+          end_clock: (item.end_time || item.start_time || item.occur_at || "").slice(11, 16) || "10:00"
+        }),
+        status: nextStatus
+      });
+      triggerFeedback(this, { hapticKey: "schedule-quick-complete" });
+      await this.afterMutation((this.currentTeam() || {}).id, ["schedule"]);
+      wx.showToast({ title: this.t("common.updateSuccess"), icon: "success" });
+    } catch (err) {
+      wx.showToast({ title: this.t("common.updateFailed"), icon: "none" });
+    }
+  },
+
+  onCardTap(event) {
+    if (this._ignoreCardTapUntil && Date.now() < this._ignoreCardTapUntil) {
+      return;
+    }
+    const dayIndex = Number(event.currentTarget.dataset.dayIndex);
+    const itemIndex = Number(event.currentTarget.dataset.itemIndex);
+    if (Number.isNaN(dayIndex) || Number.isNaN(itemIndex)) return;
+    const day = this.data.visibleDays[dayIndex];
+    const item = day && day.items[itemIndex];
+    if (!item) return;
+
+    if (item.offsetX) {
+      this.closeSwipeRows();
+      return;
+    }
+
+    if (this.data.multiSelectMode) {
+      this.toggleMultiSelectItem(dayIndex, itemIndex);
+      return;
+    }
+
+    const tapKey = `${dayIndex}-${itemIndex}-${item.idKey}`;
+    const now = Date.now();
+    if (this._lastCardTapKey === tapKey && now - (this._lastCardTapAt || 0) < 300) {
+      this.clearPendingCardTap();
+      this._lastCardTapKey = "";
+      this._lastCardTapAt = 0;
+      this.toggleScheduleCompleted(dayIndex, itemIndex);
+      return;
+    }
+
+    this._lastCardTapKey = tapKey;
+    this._lastCardTapAt = now;
+    this.clearPendingCardTap();
+    this._pendingCardTapTimer = setTimeout(() => {
+      this._pendingCardTapTimer = null;
+      this.openEditorByIndex(dayIndex, itemIndex);
+    }, 220);
+  },
+
+  async bulkDuplicateSelected() {
+    const team = this.currentTeam();
+    const selectedEntries = this.resolveSelectedEntries();
+    if (!team || !selectedEntries.length) return;
+    try {
+      const createdEntries = await Promise.all(selectedEntries.map((item) => this.duplicateTimelineEntry(team.id, item)));
+      this.clearMultiSelectMode();
+      const latestCreated = createdEntries[createdEntries.length - 1] || null;
+      const latestSource = selectedEntries[selectedEntries.length - 1] || null;
+      await this.afterMutation(team.id, ["schedule", "finance"], {
+        focusDayKey: latestCreated && latestSource
+          ? (
+            latestSource.kind === "schedule"
+              ? `${latestCreated.start_time || ""}`.slice(0, 10)
+              : `${latestCreated.occurred_at || ""}`.slice(0, 10)
+          )
+          : ""
+      });
+      wx.showToast({ title: this.t("common.createSuccess"), icon: "success" });
+    } catch (err) {
+      wx.showToast({ title: this.t("common.createFailed"), icon: "none" });
+    }
+  },
+
+  bulkDeleteSelected() {
+    const team = this.currentTeam();
+    const selectedEntries = this.resolveSelectedEntries();
+    if (!team || !selectedEntries.length) return;
+    wx.showModal({
+      title: this.t("common.delete"),
+      content: `${selectedEntries.length}`,
+      success: async (res) => {
+        if (!res.confirm) return;
+        try {
+          this.removeTimelineEntriesLocally(selectedEntries, { clearSelection: true });
+          await Promise.all(selectedEntries.map((item) => this.deleteTimelineEntry(item)));
+          await this.afterMutation(team.id, ["schedule", "finance"]);
+          wx.showToast({ title: this.t("common.delete"), icon: "success" });
+        } catch (err) {
+          await this.afterMutation(team.id, ["schedule", "finance"]);
+          wx.showToast({ title: this.t("common.deleteFailed"), icon: "none" });
+        }
+      }
+    });
   },
 
   async confirmDeleteEditing() {
@@ -938,7 +1205,7 @@ Page({
       closeComposer: this.closeComposer.bind(this),
       afterMutation: this.afterMutation.bind(this),
       onDeleteSuccess: ({ editingId, composerKind }) => {
-        this.removeDeletedItemLocally(editingId, composerKind, this.pendingDeleteDayKey);
+        this.removeDeletedItemLocally(editingId, composerKind);
       }
     });
   },

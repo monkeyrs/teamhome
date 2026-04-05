@@ -58,6 +58,7 @@ function createEmptyAssistantGraphState() {
     threadId: "",
     threadStatus: "",
     highlightedStages: [],
+    activeStage: "",
     nextNodes: [],
     updatedAt: ""
   };
@@ -71,6 +72,10 @@ function normalizeGraphState(input) {
   const highlightedStages = rawHighlightedStages
     .filter((item) => GRAPH_STAGE_ORDER.includes(item))
     .filter((item, index, items) => items.indexOf(item) === index);
+  const rawActiveStage = source.active_stage || source.activeStage || "";
+  const activeStage = GRAPH_STAGE_ORDER.includes(rawActiveStage)
+    ? rawActiveStage
+    : (highlightedStages[highlightedStages.length - 1] || "");
   const rawNextNodes = Array.isArray(source.next_nodes)
     ? source.next_nodes
     : (Array.isArray(source.nextNodes) ? source.nextNodes : []);
@@ -79,6 +84,7 @@ function normalizeGraphState(input) {
     threadId: source.thread_id || source.threadId || "",
     threadStatus: source.thread_status || source.threadStatus || "",
     highlightedStages,
+    activeStage,
     nextNodes: rawNextNodes.filter(Boolean),
     updatedAt: source.updated_at || source.updatedAt || ""
   };
@@ -87,12 +93,15 @@ function normalizeGraphState(input) {
 function buildAssistantGraphNodes(graphState, graphI18n) {
   const currentGraphState = normalizeGraphState(graphState);
   const highlighted = new Set(currentGraphState.highlightedStages);
+  const activeStage = currentGraphState.activeStage;
   return GRAPH_NODE_DEFINITIONS.map((item) => ({
     key: item.key,
     title: graphI18n[item.titleKey] || item.key,
     desc: graphI18n[item.descKey] || "",
-    className: highlighted.has(item.key)
-      ? `graph-node graph-node-${item.tone}`
+    className: item.key === activeStage
+      ? `graph-node graph-node-${item.tone} graph-node-active`
+      : highlighted.has(item.key)
+        ? `graph-node graph-node-${item.tone} graph-node-completed`
       : `graph-node graph-node-muted graph-node-idle graph-node-idle-${item.tone} graph-node-idle-phase-${item.idlePhase}`
   }));
 }

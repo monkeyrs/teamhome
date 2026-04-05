@@ -7,6 +7,7 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://admin:admin@db:5432/teamhome}
+      ASSISTANT_ENGINE: ${ASSISTANT_ENGINE:-langgraph}
       LANGGRAPH_API_URL: http://langgraph:22024
     restart: unless-stopped
     depends_on:
@@ -29,6 +30,7 @@ services:
       - backend/.env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://admin:admin@db:5432/teamhome}
+      ASSISTANT_ENGINE: ${ASSISTANT_ENGINE:-langgraph}
     command: ["langgraph", "dev", "--config", "/app/backend/langgraph.json", "--host", "0.0.0.0", "--port", "22024", "--no-reload"]
     ports:
       - "${LANGGRAPH_HOST_PORT:-22024}:22024"

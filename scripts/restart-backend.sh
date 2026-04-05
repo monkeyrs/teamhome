@@ -77,6 +77,12 @@ validate_backend_security_config() {
     issues+=("ENABLE_DEBUG_ENDPOINTS must be false.")
   fi
 
+  local assistant_engine
+  assistant_engine="$(read_env_value ASSISTANT_ENGINE langgraph)"
+  if [[ "${assistant_engine,,}" != "langgraph" ]]; then
+    issues+=("ASSISTANT_ENGINE must be langgraph.")
+  fi
+
   if (( ${#issues[@]} > 0 )); then
     printf 'Unsafe production backend config in backend/.env: %s\n' "${issues[*]}" >&2
     exit 1
@@ -131,6 +137,7 @@ export POSTGRES_PASSWORD="$(read_env_value POSTGRES_PASSWORD admin)"
 default_database_url="postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
 export DATABASE_URL="$(read_env_value DATABASE_URL "${default_database_url}")"
 export LANGGRAPH_HOST_PORT="$(read_env_value LANGGRAPH_HOST_PORT 22024)"
+export ASSISTANT_ENGINE="$(read_env_value ASSISTANT_ENGINE langgraph)"
 validate_backend_security_config
 docker compose up -d db
 docker compose build api langgraph
@@ -138,6 +145,7 @@ docker compose up -d api langgraph
 run_in_api_container "alembic upgrade head"
 run_demo_seed_if_auto
 docker compose up -d --force-recreate api langgraph
+echo "Assistant engine: ${ASSISTANT_ENGINE,,}"
 docker compose ps api langgraph db
 run_in_api_container "alembic current" && echo "Database migrations: current" || echo "Database migrations: FAILED"
 echo "Demo seed mode: $(read_demo_seed_mode)"

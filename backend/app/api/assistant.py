@@ -91,7 +91,6 @@ def execute(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=translate(locale, "assistant.internal_error"),
         ) from exc
-
     return AssistantExecuteOut(**result)
 
 

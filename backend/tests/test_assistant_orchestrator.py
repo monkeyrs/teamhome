@@ -113,6 +113,7 @@ class AssistantOrchestratorTests(unittest.TestCase):
         self.assertEqual(visual_state["thread_status"], "busy")
         self.assertEqual(visual_state["next_nodes"], ["schedule_subgraph"])
         self.assertEqual(visual_state["highlighted_stages"], ["prepare", "loop_guard", "schedule_subgraph"])
+        self.assertEqual(visual_state["active_stage"], "schedule_subgraph")
 
     def test_build_langgraph_visual_state_uses_history_nodes_for_completed_path(self):
         visual_state = assistant_orchestrator._build_langgraph_visual_state(
@@ -132,6 +133,34 @@ class AssistantOrchestratorTests(unittest.TestCase):
             visual_state["highlighted_stages"],
             ["prepare", "loop_guard", "expense_subgraph", "collect_result", "commit_batch"],
         )
+        self.assertEqual(visual_state["active_stage"], "commit_batch")
+
+    def test_build_langgraph_visual_state_falls_back_to_response_payload_when_state_nodes_are_sparse(self):
+        visual_state = assistant_orchestrator._build_langgraph_visual_state(
+            thread_id="thread-1",
+            thread={"status": "idle", "updated_at": "2026-03-29T12:00:00Z"},
+            state={
+                "next": ["prepare"],
+                "response": {
+                    "status": assistant_orchestrator.STATUS_EXECUTED,
+                    "intent": assistant_orchestrator.INTENT_CREATE_FINANCE,
+                    "data": {
+                        "results": [
+                            {
+                                "intent": assistant_orchestrator.INTENT_CREATE_FINANCE,
+                                "status": assistant_orchestrator.STATUS_EXECUTED,
+                            }
+                        ]
+                    },
+                },
+            },
+        )
+
+        self.assertEqual(
+            visual_state["highlighted_stages"],
+            ["prepare", "loop_guard", "expense_subgraph", "collect_result", "commit_batch"],
+        )
+        self.assertEqual(visual_state["active_stage"], "commit_batch")
 
     def test_attach_langgraph_visual_state_falls_back_to_response_status(self):
         response = {
@@ -150,6 +179,51 @@ class AssistantOrchestratorTests(unittest.TestCase):
             enriched["data"]["graph_state"]["highlighted_stages"],
             ["prepare", "loop_guard", "expense_subgraph", "collect_result", "commit_batch"],
         )
+        self.assertEqual(enriched["data"]["graph_state"]["active_stage"], "commit_batch")
+
+    def test_attach_langgraph_visual_state_replaces_prepare_only_snapshot_with_response_fallback(self):
+        response = {
+            "reply": "done",
+            "status": assistant_orchestrator.STATUS_EXECUTED,
+            "intent": assistant_orchestrator.INTENT_CREATE_SCHEDULE,
+            "data": {"can_undo": True},
+        }
+
+        with patch(
+            "app.services.assistant_orchestrator._get_langgraph_visual_state",
+            return_value={
+                "available": True,
+                "thread_id": "thread-2",
+                "thread_status": "idle",
+                "highlighted_stages": ["prepare"],
+                "active_stage": "prepare",
+                "next_nodes": ["prepare"],
+                "updated_at": "2026-03-29T12:00:00Z",
+            },
+        ):
+            enriched = assistant_orchestrator._attach_langgraph_visual_state(response, thread_id="thread-2")
+
+        self.assertEqual(
+            enriched["data"]["graph_state"]["highlighted_stages"],
+            ["prepare", "loop_guard", "schedule_subgraph", "collect_result", "commit_batch"],
+        )
+        self.assertEqual(enriched["data"]["graph_state"]["active_stage"], "commit_batch")
+
+    def test_build_langgraph_visual_state_prefers_loop_guard_when_next_points_to_guard(self):
+        visual_state = assistant_orchestrator._build_langgraph_visual_state(
+            thread_id="thread-1",
+            thread={"status": "busy", "updated_at": "2026-03-29T12:00:00Z"},
+            state={
+                "next": ["loop_guard"],
+                "history": [
+                    {"next": ["prepare"]},
+                    {"next": ["expense_subgraph"]},
+                ],
+            },
+        )
+
+        self.assertEqual(visual_state["highlighted_stages"], ["prepare", "loop_guard", "expense_subgraph"])
+        self.assertEqual(visual_state["active_stage"], "loop_guard")
 
     def test_graph_stage_fallback_from_query_response_keeps_query_path(self):
         stages = assistant_orchestrator._graph_stage_fallback_from_response(

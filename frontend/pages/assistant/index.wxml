@@ -22,7 +22,7 @@
             <text class="team-line-label">{{i18n.page.currentTeam}}</text>
             <text>: {{teams.length ? teams[teamIndex].name : i18n.page.noTeam}}</text>
           </view>
-          <view class="team-summary-meta" wx:if="{{teams.length && teams[teamIndex].isReadonly}}">{{i18n.page.teamDemoBadge}} 路 {{i18n.page.teamReadonlyBadge}}</view>
+          <view class="team-summary-meta" wx:if="{{teams.length && teams[teamIndex].isReadonly}}">{{i18n.page.teamDemoMeta}}</view>
         </view>
         <view class="team-switch-btn">{{teamPanelOpen ? i18n.common.collapse : i18n.common.switch}}</view>
       </view>
@@ -40,7 +40,7 @@
           />
           <button class="btn-primary team-join-btn" loading="{{teamActionLoading}}" disabled="{{teamActionLoading}}" bindtap="createOrJoinTeam">{{i18n.page.teamActionPrimary}}</button>
         </view>
-        <view class="demo-entry-panel" wx:if="{{teamInputFocused}}">
+        <view class="demo-entry-panel" wx:if="{{teamInputFocused && demoEntryOptions.length}}">
           <view class="demo-entry-title">{{i18n.page.demoEntryTitle}}</view>
           <block wx:for="{{demoEntryOptions}}" wx:key="key">
             <view class="demo-entry-option" data-team-name="{{item.teamName}}" bindtap="openDemoTeamFromEntry">
@@ -207,7 +207,7 @@
       </view>
 
       <view class="graph-row">
-        <view class="{{assistantGraphNodes[0].className}}">
+        <view class="{{assistantGraphNodes[0].className}}" data-index="0" bindlongpress="onGraphNodeLongPress">
           <view class="graph-node-title">{{assistantGraphNodes[0].title}}</view>
           <view class="graph-node-desc">{{assistantGraphNodes[0].desc}}</view>
         </view>
@@ -215,7 +215,7 @@
           <view class="graph-arrow-line"></view>
           <view class="graph-arrow-head"></view>
         </view>
-        <view class="{{assistantGraphNodes[1].className}}">
+        <view class="{{assistantGraphNodes[1].className}}" data-index="1" bindlongpress="onGraphNodeLongPress">
           <view class="graph-node-title">{{assistantGraphNodes[1].title}}</view>
           <view class="graph-node-desc">{{assistantGraphNodes[1].desc}}</view>
         </view>
@@ -230,7 +230,7 @@
       </view>
 
       <view class="graph-row">
-        <view class="{{assistantGraphNodes[2].className}}">
+        <view class="{{assistantGraphNodes[2].className}}" data-index="2" bindlongpress="onGraphNodeLongPress">
           <view class="graph-node-title">{{assistantGraphNodes[2].title}}</view>
           <view class="graph-node-desc">{{assistantGraphNodes[2].desc}}</view>
         </view>
@@ -238,7 +238,7 @@
           <view class="graph-fork-horizontal"></view>
           <view class="graph-fork-vertical"></view>
         </view>
-        <view class="{{assistantGraphNodes[3].className}}">
+        <view class="{{assistantGraphNodes[3].className}}" data-index="3" bindlongpress="onGraphNodeLongPress">
           <view class="graph-node-title">{{assistantGraphNodes[3].title}}</view>
           <view class="graph-node-desc">{{assistantGraphNodes[3].desc}}</view>
         </view>
@@ -253,7 +253,7 @@
       </view>
 
       <view class="graph-row">
-        <view class="{{assistantGraphNodes[4].className}}">
+        <view class="{{assistantGraphNodes[4].className}}" data-index="4" bindlongpress="onGraphNodeLongPress">
           <view class="graph-node-title">{{assistantGraphNodes[4].title}}</view>
           <view class="graph-node-desc">{{assistantGraphNodes[4].desc}}</view>
         </view>
@@ -261,7 +261,7 @@
           <view class="graph-arrow-line"></view>
           <view class="graph-arrow-head"></view>
         </view>
-        <view class="{{assistantGraphNodes[5].className}}">
+        <view class="{{assistantGraphNodes[5].className}}" data-index="5" bindlongpress="onGraphNodeLongPress">
           <view class="graph-node-title">{{assistantGraphNodes[5].title}}</view>
           <view class="graph-node-desc">{{assistantGraphNodes[5].desc}}</view>
         </view>

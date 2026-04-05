@@ -54,6 +54,52 @@ bash /root/teamhome/scripts/server-up.sh
 - 强制重建并拉起服务
 - 检查 OpenAPI 健康状态
 
+## 发版前服务器配置检查
+
+先确认服务器 `backend/.env` 至少满足这些值：
+
+- `ENVIRONMENT=production`
+- `ASSISTANT_ENGINE=langgraph`
+- `ENABLE_DEBUG_ENDPOINTS=false`
+- `ALLOW_INSECURE_DEV_AUTH=false`
+- `JWT_SECRET` 为 32 位以上非默认强密钥
+- `CORS_ALLOW_ORIGINS` 不包含 `*`
+- `WECHAT_APPID` / `WECHAT_SECRET` 已配置
+
+如果这里有一项不对，先改环境变量，不要直接发版。当前 `scripts/server-up.sh` 已经会对这些关键项做预检。
+
+## 正式发版操作
+
+推荐在服务器上按这个顺序执行：
+
+```bash
+cd /root/teamhome
+git pull origin main
+bash /root/teamhome/scripts/server-up.sh
+```
+
+`server-up.sh` 会自动执行：
+
+1. 生产环境安全预检
+2. 拉起数据库
+3. 构建 `api` 和 `langgraph`
+4. 执行 `alembic upgrade head`
+5. 按配置决定是否补 demo seed
+6. 强制重建 `api` / `langgraph`
+7. 输出容器状态、迁移状态、assistant engine 和 API 健康检查
+
+## 发版后建议检查
+
+上线完成后建议立刻补这几项人工验证：
+
+1. `docker compose -f docker-compose.prod.yml ps`
+2. `docker compose -f docker-compose.prod.yml logs --tail 150 api langgraph`
+3. `curl http://127.0.0.1:8000/openapi.json`
+4. 从小程序真机或开发版验证一次：
+   - 助手输入“今天中午吃饭花了20”，确认回复成功且 LangGraph 示意图不再停在 `prepare`
+   - 时间线页新增 / 删除 / 批量删除后布局正常
+   - 分析页正常打开
+
 ## Nginx
 
 把 `docs/nginx-monkeyrs.conf` 放到服务器的 `/etc/nginx/conf.d/monkeyrs.conf`

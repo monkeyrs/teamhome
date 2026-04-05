@@ -24,15 +24,22 @@ async function submitComposer({
     }
     const payload = buildSchedulePayload(scheduleForm);
     try {
+      let result = null;
       if (composerMode === "edit" && editingId) {
-        await api.updateSchedule(editingId, payload);
+        result = await api.updateSchedule(editingId, payload);
         wx.showToast({ title: t("common.updateSuccess"), icon: "success" });
       } else {
-        await api.createSchedule(team.id, payload);
+        result = await api.createSchedule(team.id, payload);
         wx.showToast({ title: t("common.createSuccess"), icon: "success" });
       }
       closeComposer();
-      await afterMutation(team.id, ["schedule"]);
+      await afterMutation(team.id, ["schedule"], {
+        focusEntry: result ? {
+          kind: "schedule",
+          sourceId: `${result.id || ""}`,
+          dayKey: `${result.start_time || ""}`.slice(0, 10)
+        } : null
+      });
     } catch (err) {
       wx.showToast({
         title: composerMode === "edit" ? t("common.updateFailed") : t("common.createFailed"),
@@ -48,15 +55,22 @@ async function submitComposer({
   }
   const payload = buildFinancePayload(financeForm);
   try {
+    let result = null;
     if (composerMode === "edit" && editingId) {
-      await api.updateFinance(editingId, payload);
+      result = await api.updateFinance(editingId, payload);
       wx.showToast({ title: t("common.updateSuccess"), icon: "success" });
     } else {
-      await api.createFinance(team.id, payload);
+      result = await api.createFinance(team.id, payload);
       wx.showToast({ title: t("common.createSuccess"), icon: "success" });
     }
     closeComposer();
-    await afterMutation(team.id, ["finance"]);
+    await afterMutation(team.id, ["finance"], {
+      focusEntry: result ? {
+        kind: result.type === "income" ? "income" : "expense",
+        sourceId: `${result.id || ""}`,
+        dayKey: `${result.occurred_at || ""}`.slice(0, 10)
+      } : null
+    });
   } catch (err) {
     wx.showToast({
       title: composerMode === "edit" ? t("common.updateFailed") : t("common.createFailed"),
@@ -74,6 +88,7 @@ async function confirmDeleteEditing({
   api,
   closeComposer,
   afterMutation,
+  afterMutationOptions,
   onDeleteSuccess
 }) {
   if (composerMode !== "edit" || !editingId || !team) return;
@@ -100,7 +115,7 @@ async function confirmDeleteEditing({
     }
     wx.showToast({ title: t("page.deleted"), icon: "success" });
     closeComposer();
-    await afterMutation(team.id, [isSchedule ? "schedule" : "finance"]);
+    await afterMutation(team.id, [isSchedule ? "schedule" : "finance"], afterMutationOptions || {});
   } catch (err) {
     wx.showToast({ title: t("common.deleteFailed"), icon: "none" });
   }

@@ -13,6 +13,10 @@ function formatCurrency(value) {
   return parseAmount(value).toFixed(2);
 }
 
+function formatIntegerCurrency(value) {
+  return `${Math.round(parseAmount(value))}`;
+}
+
 function getName(item, fallback) {
   return item.creator_nickname || item.creatorName || fallback;
 }
@@ -151,7 +155,7 @@ function computeRecentExpenseBars(records) {
   const max = entries.reduce((acc, item) => Math.max(acc, item.value), 0) || 1;
   return entries.map((item, index) => ({
     label: item.label,
-    valueText: formatCurrency(item.value),
+    valueText: formatIntegerCurrency(item.value),
     height: `${Math.max(12, (item.value / max) * 100)}%`,
     color: PALETTE[index % PALETTE.length]
   }));

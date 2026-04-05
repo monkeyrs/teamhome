@@ -65,6 +65,7 @@ function Set-ComposeEnvironment {
   $defaultDatabaseUrl = "postgresql+psycopg2://$($env:POSTGRES_USER):$($env:POSTGRES_PASSWORD)@db:5432/$($env:POSTGRES_DB)"
   $env:DATABASE_URL = Get-DotEnvValue -Key "DATABASE_URL" -Default $defaultDatabaseUrl
   $env:LANGGRAPH_HOST_PORT = Get-DotEnvValue -Key "LANGGRAPH_HOST_PORT" -Default "22024"
+  $env:ASSISTANT_ENGINE = Get-DotEnvValue -Key "ASSISTANT_ENGINE" -Default "langgraph"
 }
 
 function Test-BackendSecurityConfig {
@@ -104,6 +105,11 @@ function Test-BackendSecurityConfig {
   $enableDebugEndpoints = (Get-DotEnvValue -Key "ENABLE_DEBUG_ENDPOINTS" -Default "false").ToLowerInvariant()
   if ($enableDebugEndpoints -eq "true") {
     $issues.Add("ENABLE_DEBUG_ENDPOINTS must be false.")
+  }
+
+  $assistantEngine = (Get-DotEnvValue -Key "ASSISTANT_ENGINE" -Default "langgraph").ToLowerInvariant()
+  if ($assistantEngine -ne "langgraph") {
+    $issues.Add("ASSISTANT_ENGINE must be langgraph.")
   }
 
   if ($issues.Count -gt 0) {
@@ -212,6 +218,7 @@ function Show-Status {
     Write-Host "Database migrations: unavailable"
   }
   Write-Host "Demo seed mode: $(Get-DemoSeedMode)"
+  Write-Host "Assistant engine: $((Get-DotEnvValue -Key 'ASSISTANT_ENGINE' -Default 'langgraph').ToLowerInvariant())"
   try {
     $resp = Invoke-WebRequest -Uri $HealthUrl -UseBasicParsing -TimeoutSec 5
     Write-Host "API health: HTTP $($resp.StatusCode)"

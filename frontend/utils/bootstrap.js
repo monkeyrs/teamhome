@@ -88,6 +88,28 @@ async function ensureTeam() {
   };
 }
 
+async function refreshUserInfo() {
+  const app = getApp();
+  if (!app.globalData.token) {
+    await loginIfNeeded();
+  }
+
+  try {
+    const user = await request({ path: "/auth/me", method: "GET" });
+    setCurrentUser(user || null);
+    return user || null;
+  } catch (err) {
+    if (err && err.statusCode === 401) {
+      clearToken();
+      await loginIfNeeded(true);
+      const user = await request({ path: "/auth/me", method: "GET" });
+      setCurrentUser(user || null);
+      return user || null;
+    }
+    throw err;
+  }
+}
+
 async function bootstrapSession() {
   await loginIfNeeded();
   return ensureTeam();
@@ -104,5 +126,6 @@ function getCurrentTeamState() {
 
 module.exports = {
   bootstrapSession,
-  getCurrentTeamState
+  getCurrentTeamState,
+  refreshUserInfo
 };

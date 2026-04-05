@@ -144,6 +144,7 @@ function normalizeTimelineItem(item, t) {
   const isMultiDaySchedule = isSchedule && segmentRole !== "single";
   const isMiddleSegment = segmentRole === "middle";
   const scheduleColorIndex = Number.isInteger(item.schedule_color_index) ? item.schedule_color_index : 0;
+  const isCompleted = isSchedule && String(item.status || "").toLowerCase() === "completed";
   const locationText = `${item.location || ""}`.trim();
   const noteText = `${item.note || item.description || ""}`.trim();
   const kindLabel = t(
@@ -165,12 +166,12 @@ function normalizeTimelineItem(item, t) {
     segmentRole,
     isMultiDaySchedule,
     isMiddleSegment,
+    isCompleted,
     scheduleColorIndex,
     multiDayCardClass: `timeline-card-with-rail timeline-card-schedule-color-${scheduleColorIndex}`,
     scheduleCardClass: `timeline-card-schedule-color-${scheduleColorIndex}`,
     scheduleLineClass: `schedule-segment-line-color-${scheduleColorIndex}`,
     scheduleNodeClass: `schedule-segment-node-color-${scheduleColorIndex}`,
-    scheduleCompactTitleClass: `schedule-compact-title-color-${scheduleColorIndex}`,
     hasSegmentBefore: segmentRole === "middle" || segmentRole === "end",
     hasSegmentAfter: segmentRole === "start" || segmentRole === "middle",
     creatorName: item.creator_name || t("common.teamMember"),
@@ -240,7 +241,11 @@ function buildVisibleDays({ days = [], activeKindFilter = "", t }) {
 function buildDayCountMap(days = []) {
   const map = {};
   (days || []).forEach((day) => {
-    map[day.day_key] = Array.isArray(day.items) ? day.items.length : 0;
+    const expandedItems = expandTimelineItems(day.items || []);
+    expandedItems.forEach((item) => {
+      const dayKey = item.display_day_key || day.day_key;
+      map[dayKey] = (map[dayKey] || 0) + 1;
+    });
   });
   return map;
 }

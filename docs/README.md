@@ -28,7 +28,7 @@
 ### 部署与运维
 
 - [deploy-monkeyrs.md](C:/Users/monke/Desktop/WeCount/teamhome/docs/deploy-monkeyrs.md)
-  用途：正式部署 `your-domain.example`、配置 HTTPS 和运行生产容器。
+  用途：正式部署 `your-domain.example`、配置 HTTPS、运行生产容器，并包含发版前配置检查与发版后验证清单。
 - [nginx-monkeyrs.conf](C:/Users/monke/Desktop/WeCount/teamhome/docs/nginx-monkeyrs.conf)
   用途：Nginx 参考配置，配合部署文档一起使用。
 
@@ -42,3 +42,9 @@
 - `docs/` 下的项目自有文档统一保存为 UTF-8 无 BOM。
 - 文档要优先反映当前仓库现状，历史草案需明确标注“规划基线”。
 - 如果新增后端架构、部署链路或调试方式，除了改代码，也要同步更新这里的索引和对应文档。
+
+## 最新同步
+
+- 2026-04-03 至 2026-04-04 的最新收口已同步到 [iteration-history.md](C:/Users/monke/Desktop/WeCount/teamhome/docs/iteration-history.md)。
+- 助手首页 LangGraph 示意图的当前验证入口与排障方式已同步到 [langgraph-debug.md](C:/Users/monke/Desktop/WeCount/teamhome/docs/langgraph-debug.md)。
+- 小程序当前全局样式基座以 `frontend/app.wxss` 为准，README 已补充说明。
