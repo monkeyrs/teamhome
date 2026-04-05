@@ -19,7 +19,7 @@
       <view class="field-group field-inline-stack">
         <view class="field-inline-head">
           <view class="field-label field-inline-label">{{i18n.page.titleLabel}}</view>
-          <input class="input-control input-control-inline" placeholder="{{i18n.page.titlePlaceholder}}" value="{{scheduleForm.title}}" bindinput="onInputScheduleTitle" />
+          <input class="input-control input-control-inline" placeholder="{{scheduleForm.title ? '' : i18n.page.titlePlaceholder}}" value="{{scheduleForm.title}}" bindinput="onInputScheduleTitle" />
         </view>
       </view>
 
@@ -45,38 +45,47 @@
       </view>
 
       <view class="compact-datetime-card">
-        <view class="compact-picker-line">
-          <view class="field-label field-inline-label">{{i18n.page.startDate}}</view>
-          <view class="compact-picker-main">
-            <view class="compact-picker-row">
-              <picker mode="date" value="{{scheduleForm.date}}" bindchange="onScheduleDateChange">
-                <view class="picker picker-compact {{scheduleForm.date ? '' : 'placeholder'}}">{{scheduleForm.date || i18n.page.selectDate}}</view>
-              </picker>
-              <picker wx:if="{{!scheduleForm.is_all_day}}" mode="time" value="{{scheduleForm.start_clock}}" bindchange="onScheduleStartTimeChange">
-                <view class="picker picker-compact picker-compact-time">{{scheduleForm.start_clock}}</view>
-              </picker>
+        <view class="compact-datetime-layout">
+          <view class="compact-datetime-main">
+            <view class="compact-picker-line">
+              <view class="field-label field-inline-label">{{i18n.page.startDate}}</view>
+              <view class="compact-picker-main">
+                <view class="compact-picker-row">
+                  <picker class="picker-slot-date" mode="date" value="{{scheduleForm.date}}" bindchange="onScheduleDateChange">
+                    <view class="picker picker-compact picker-compact-date {{scheduleForm.date ? '' : 'placeholder'}}">{{scheduleForm.date || i18n.page.selectDate}}</view>
+                  </picker>
+                  <picker wx:if="{{!scheduleForm.is_all_day}}" class="picker-slot-time" mode="time" value="{{scheduleForm.start_clock}}" bindchange="onScheduleStartTimeChange">
+                    <view class="picker picker-compact picker-compact-time">{{scheduleForm.start_clock}}</view>
+                  </picker>
+                </view>
+              </view>
             </view>
-            <view class="all-day-side-label">{{i18n.page.allDayTitle}}</view>
-          </view>
-        </view>
 
-        <view class="compact-picker-line">
-          <view class="field-label field-inline-label">{{i18n.page.endDate}}</view>
-          <view class="compact-picker-main">
-            <view class="compact-picker-row">
-              <picker mode="date" start="{{scheduleForm.date}}" value="{{scheduleForm.end_date}}" bindchange="onScheduleEndDateChange">
-                <view class="picker picker-compact {{scheduleForm.end_date ? '' : 'placeholder'}}">{{scheduleForm.end_date || i18n.page.selectDate}}</view>
-              </picker>
-              <picker wx:if="{{!scheduleForm.is_all_day}}" mode="time" value="{{scheduleForm.end_clock}}" bindchange="onScheduleEndTimeChange">
-                <view class="picker picker-compact picker-compact-time">{{scheduleForm.end_clock}}</view>
-              </picker>
+            <view class="compact-picker-line">
+              <view class="field-label field-inline-label">{{i18n.page.endDate}}</view>
+              <view class="compact-picker-main">
+                <view class="compact-picker-row">
+                  <picker class="picker-slot-date" mode="date" start="{{scheduleForm.date}}" value="{{scheduleForm.end_date}}" bindchange="onScheduleEndDateChange">
+                    <view class="picker picker-compact picker-compact-date {{scheduleForm.end_date ? '' : 'placeholder'}}">{{scheduleForm.end_date || i18n.page.selectDate}}</view>
+                  </picker>
+                  <picker wx:if="{{!scheduleForm.is_all_day}}" class="picker-slot-time" mode="time" value="{{scheduleForm.end_clock}}" bindchange="onScheduleEndTimeChange">
+                    <view class="picker picker-compact picker-compact-time">{{scheduleForm.end_clock}}</view>
+                  </picker>
+                </view>
+              </view>
             </view>
-            <checkbox-group bindchange="onToggleAllDay">
-              <label class="all-day-check-toggle {{scheduleForm.is_all_day ? 'all-day-check-toggle-on' : ''}}">
-                <checkbox value="allDay" checked="{{scheduleForm.is_all_day}}" color="#07c160" />
-              </label>
-            </checkbox-group>
           </view>
+
+          <checkbox-group class="all-day-panel" bindchange="onToggleAllDay">
+            <label class="all-day-panel-toggle {{scheduleForm.is_all_day ? 'all-day-panel-toggle-on' : ''}}">
+              <view class="all-day-panel-title">{{i18n.page.allDayTitle}}</view>
+              <view class="all-day-panel-box">
+                <view class="all-day-panel-box-inner">
+                  <checkbox value="allDay" checked="{{scheduleForm.is_all_day}}" color="#07c160" />
+                </view>
+              </view>
+            </label>
+          </checkbox-group>
         </view>
       </view>
     </view>
@@ -206,7 +215,6 @@
           </view>
           <view class="today-action" bindtap="backToToday">{{i18n.page.backToToday}}</view>
         </view>
-        <view class="readonly-banner" wx:if="{{teams.length && teams[teamIndex].is_readonly}}">{{i18n.page.readonlyBanner}}</view>
       </view>
     </view>
 
@@ -303,10 +311,12 @@
           </block>
         </block>
 
-        <view wx:else class="card empty-card timeline-empty">
+        <view wx:else class="card empty-card timeline-empty nintendo-press" bindtap="toggleQuickCreate">
           <view class="empty-title">{{i18n.page.emptyTitle}}</view>
           <view class="empty-text">{{i18n.page.emptyText}}</view>
-          <view class="timeline-empty-magic">+</view>
+          <view class="timeline-empty-magic floating-fab floating-fab-plus floating-fab-plus-glow {{isQuickCreateOpen ? 'floating-fab-open' : ''}}">
+            <image class="fab-icon-image" src="../../assets/icons/plus.svg" mode="aspectFit" />
+          </view>
         </view>
 
         <view class="timeline-tail-spacer" wx:if="{{visibleDays.length}}"></view>

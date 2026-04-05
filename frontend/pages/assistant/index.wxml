@@ -17,13 +17,14 @@
       </view>
 
       <view class="team-compact" bindtap="toggleTeamPanel">
-        <view class="team-summary">
-          <view class="team-line">
-            <text class="team-line-label">{{i18n.page.currentTeam}}</text>
-            <text>: {{teams.length ? teams[teamIndex].name : i18n.page.noTeam}}</text>
+          <view class="team-summary">
+            <view class="team-line">
+              <text class="team-line-label">{{i18n.page.currentTeam}}</text>
+              <text>:</text>
+              <text class="team-line-name">{{teams.length ? teams[teamIndex].name : i18n.page.noTeam}}</text>
+              <text wx:if="{{teams.length && teams[teamIndex].isDemo}}" class="team-demo-badge">{{i18n.page.teamDemoBadge}}</text>
+            </view>
           </view>
-          <view class="team-summary-meta" wx:if="{{teams.length && teams[teamIndex].isReadonly}}">{{i18n.page.teamDemoMeta}}</view>
-        </view>
         <view class="team-switch-btn">{{teamPanelOpen ? i18n.common.collapse : i18n.common.switch}}</view>
       </view>
 
@@ -41,23 +42,29 @@
           <button class="btn-primary team-join-btn" loading="{{teamActionLoading}}" disabled="{{teamActionLoading}}" bindtap="createOrJoinTeam">{{i18n.page.teamActionPrimary}}</button>
         </view>
         <view class="demo-entry-panel" wx:if="{{teamInputFocused && demoEntryOptions.length}}">
-          <view class="demo-entry-title">{{i18n.page.demoEntryTitle}}</view>
-          <block wx:for="{{demoEntryOptions}}" wx:key="key">
-            <view class="demo-entry-option" data-team-name="{{item.teamName}}" bindtap="openDemoTeamFromEntry">
-              <view class="demo-entry-label">{{i18n.page.teamDemoBadge}}: {{item.displayName}}</view>
-              <view class="demo-entry-meta">{{i18n.page.demoEntryHint}}</view>
+        <view class="demo-entry-title">{{i18n.page.demoEntryTitle}}</view>
+        <block wx:for="{{demoEntryOptions}}" wx:key="key">
+          <view class="demo-entry-option" data-team-name="{{item.teamName}}" bindtap="openDemoTeamFromEntry">
+            <view class="demo-entry-label">
+              <text class="demo-entry-name">{{item.displayName}}</text>
+              <text class="demo-entry-badge">{{i18n.page.teamDemoBadge}}</text>
             </view>
-          </block>
-        </view>
+            <view class="demo-entry-meta">{{i18n.page.demoEntryHint}}</view>
+          </view>
+        </block>
+      </view>
 
         <block wx:for="{{teams}}" wx:key="id">
-          <view class="team-option">
-            <view class="team-option-main" data-index="{{index}}" bindtap="onSelectTeam">
-              <view class="team-option-head">
-                <view class="team-option-name">{{item.name}}</view>
-                <view class="team-option-meta">{{item.metaText}}</view>
+            <view class="team-option">
+              <view class="team-option-main" data-index="{{index}}" bindtap="onSelectTeam">
+                <view class="team-option-head">
+                  <view class="team-option-name-row">
+                    <view class="team-option-name">{{item.name}}</view>
+                    <view wx:if="{{item.isDemo}}" class="team-demo-badge">{{i18n.page.teamDemoBadge}}</view>
+                    <view wx:if="{{item.metaText && !item.isDemo}}" class="team-option-meta-inline">{{item.metaText}}</view>
+                  </view>
+                </view>
               </view>
-            </view>
             <view class="team-option-actions">
               <view
                 wx:if="{{item.join_password}}"
@@ -99,6 +106,7 @@
               type="number"
               maxlength="4"
               placeholder="{{i18n.page.teamPasswordPlaceholder}}"
+              placeholder-style="color: transparent;"
               value="{{teamDialogPassword}}"
               focus="{{teamDialogPasswordFocus}}"
               bindinput="onTeamDialogPasswordInput"

@@ -58,7 +58,8 @@ const SWIPE_LAZINESS = 54;
 const DIRECTION_LOCK_THRESHOLD = 12;
 const PAST_WINDOW_DAYS = 120;
 const FUTURE_WINDOW_DAYS = 90;
-const DAY_RAIL_STICKY_TOP = 132;
+const DAY_RAIL_STICKY_TOP_RPX = 132;
+const DAY_RAIL_STICKY_GAP_RPX = 8;
 const MAX_COMPACT_SUGGESTIONS = 7;
 
 Page({
@@ -114,6 +115,15 @@ Page({
 
   onLoad() {
     this.pendingTimelineAnchor = null;
+    this.measuredStickyTop = this.rpxToPx(DAY_RAIL_STICKY_TOP_RPX + DAY_RAIL_STICKY_GAP_RPX);
+  },
+
+  rpxToPx(value) {
+    const info = typeof wx.getWindowInfo === "function"
+      ? wx.getWindowInfo()
+      : wx.getSystemInfoSync();
+    const windowWidth = (info && info.windowWidth) || 375;
+    return Math.round((Number(value) || 0) * windowWidth / 750);
   },
 
   onPageScroll(event) {
@@ -364,21 +374,52 @@ Page({
     return dayKey ? `day-${dayKey}` : "";
   },
 
+  getStickyTopOffset() {
+    return this.measuredStickyTop || this.rpxToPx(DAY_RAIL_STICKY_TOP_RPX + DAY_RAIL_STICKY_GAP_RPX);
+  },
+
+  measureStickyTopOffset() {
+    return new Promise((resolve) => {
+      const fallback = this.rpxToPx(DAY_RAIL_STICKY_TOP_RPX + DAY_RAIL_STICKY_GAP_RPX);
+      const query = wx.createSelectorQuery();
+      query.select(".day-rail-floating").boundingClientRect();
+      query.select(".sticky-stack").boundingClientRect();
+      query.exec((res) => {
+        const floatingRect = Array.isArray(res) ? res[0] : null;
+        const stickyRect = Array.isArray(res) ? res[1] : null;
+        if (floatingRect && typeof floatingRect.top === "number") {
+          this.measuredStickyTop = Math.max(Math.round(floatingRect.top), fallback);
+          resolve(this.measuredStickyTop);
+          return;
+        }
+        if (stickyRect && typeof stickyRect.height === "number") {
+          this.measuredStickyTop = Math.max(Math.round(stickyRect.height + this.rpxToPx(DAY_RAIL_STICKY_GAP_RPX)), fallback);
+          resolve(this.measuredStickyTop);
+          return;
+        }
+        this.measuredStickyTop = fallback;
+        resolve(this.measuredStickyTop);
+      });
+    });
+  },
+
   scrollToTodayAnchor() {
     if (this.data.initialScrollDone) return;
     const anchorId = this.getTodayAnchorId();
     if (!anchorId) return;
-    const query = wx.createSelectorQuery();
-    query.select(`#${anchorId}`).boundingClientRect();
-    query.selectViewport().scrollOffset();
-    query.exec((res) => {
-      const rect = res && res[0];
-      const viewport = res && res[1];
-      if (!rect || !viewport) return;
-      const top = Math.max((viewport.scrollTop || 0) + rect.top - DAY_RAIL_STICKY_TOP, 0);
-      wx.pageScrollTo({ scrollTop: top, duration: 0 });
-      this.setData({ initialScrollDone: true });
-      this.refreshStickyDay(top);
+    this.measureStickyTopOffset().then(() => {
+      const query = wx.createSelectorQuery();
+      query.select(`#${anchorId}`).boundingClientRect();
+      query.selectViewport().scrollOffset();
+      query.exec((res) => {
+        const rect = res && res[0];
+        const viewport = res && res[1];
+        if (!rect || !viewport) return;
+        const top = Math.max((viewport.scrollTop || 0) + rect.top - this.getStickyTopOffset(), 0);
+        wx.pageScrollTo({ scrollTop: top, duration: 0 });
+        this.setData({ initialScrollDone: true });
+        this.refreshStickyDay(top);
+      });
     });
   },
 
@@ -435,21 +476,23 @@ Page({
     const duration = typeof options.duration === "number" ? options.duration : 220;
     const silent = !!options.silent;
     const anchorId = `day-${dayKey}`;
-    const query = wx.createSelectorQuery();
-    query.select(`#${anchorId}`).boundingClientRect();
-    query.selectViewport().scrollOffset();
-    query.exec((res) => {
-      const rect = res && res[0];
-      const viewport = res && res[1];
-      if (!rect || !viewport) {
-        if (!silent) {
-          wx.showToast({ title: this.t("page.dayNotLoaded"), icon: "none" });
+    this.measureStickyTopOffset().then(() => {
+      const query = wx.createSelectorQuery();
+      query.select(`#${anchorId}`).boundingClientRect();
+      query.selectViewport().scrollOffset();
+      query.exec((res) => {
+        const rect = res && res[0];
+        const viewport = res && res[1];
+        if (!rect || !viewport) {
+          if (!silent) {
+            wx.showToast({ title: this.t("page.dayNotLoaded"), icon: "none" });
+          }
+          return;
         }
-        return;
-      }
-      const top = Math.max((viewport.scrollTop || 0) + rect.top - DAY_RAIL_STICKY_TOP, 0);
-      wx.pageScrollTo({ scrollTop: top, duration });
-      this.refreshStickyDay(top);
+        const top = Math.max((viewport.scrollTop || 0) + rect.top - this.getStickyTopOffset(), 0);
+        wx.pageScrollTo({ scrollTop: top, duration });
+        this.refreshStickyDay(top);
+      });
     });
   },
 
@@ -520,7 +563,7 @@ Page({
       return;
     }
 
-    const targetTop = scrollTop + DAY_RAIL_STICKY_TOP + 1;
+    const targetTop = scrollTop + this.getStickyTopOffset() + 1;
     let activeKey = anchors[0].dayKey;
     for (let index = 0; index < anchors.length; index += 1) {
       if (anchors[index].top <= targetTop) {
@@ -545,25 +588,43 @@ Page({
     this.setData({ activeStickyDay: activeDay });
   },
 
-  toggleFilterMenu() {
+  async toggleFilterMenu() {
     if (this.data.multiSelectMode) return;
+    if (this.data.activeKindFilter) {
+      const currentFocusDayKey = (this.data.activeStickyDay && this.data.activeStickyDay.day_key)
+        || (this.data.visibleDays && this.data.visibleDays[0] && this.data.visibleDays[0].day_key)
+        || formatDate(new Date());
+      this.setData({
+        activeKindFilter: "",
+        isFilterOpen: true,
+        isQuickCreateOpen: false,
+        visibleDays: this.buildVisibleDays(this.data.days, ""),
+        activeStickyDay: null
+      });
+      await this.nextTickAsync();
+      await this.remountTimelineView({ focusDayKey: currentFocusDayKey });
+      return;
+    }
     this.setData({
       isFilterOpen: !this.data.isFilterOpen,
       isQuickCreateOpen: false
     });
   },
 
-  selectKindFilter(event) {
+  async selectKindFilter(event) {
     const kind = event.currentTarget.dataset.kind || "";
     const nextFilter = this.data.activeKindFilter === kind ? "" : kind;
+    const currentFocusDayKey = (this.data.activeStickyDay && this.data.activeStickyDay.day_key)
+      || (this.data.visibleDays && this.data.visibleDays[0] && this.data.visibleDays[0].day_key)
+      || formatDate(new Date());
     this.setData({
       activeKindFilter: nextFilter,
       isFilterOpen: false,
       visibleDays: this.buildVisibleDays(this.data.days, nextFilter),
       activeStickyDay: null
-    }, () => {
-      this.rebuildStickyDayAnchors();
     });
+    await this.nextTickAsync();
+    await this.remountTimelineView({ focusDayKey: currentFocusDayKey });
   },
 
   openCreateSchedule() {

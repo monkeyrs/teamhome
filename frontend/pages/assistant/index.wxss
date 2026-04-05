@@ -238,10 +238,23 @@
 
 .verify-code-hidden-input {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  left: 50%;
+  top: calc(100% + 28rpx);
+  width: 2rpx;
+  min-width: 2rpx;
+  max-width: 2rpx;
+  height: 2rpx;
+  min-height: 2rpx;
+  max-height: 2rpx;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: transparent;
   opacity: 0;
+  transform: translateX(-50%);
+  overflow: hidden;
+  z-index: -1;
 }
 
 .quick-replies {
@@ -303,15 +316,18 @@
   font-size: 30rpx;
   font-weight: 600;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  flex-wrap: wrap;
+}
+
+.team-line-name {
+  min-width: 0;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.team-summary-meta {
-  margin-top: 6rpx;
-  font-size: 22rpx;
-  color: var(--text-secondary);
 }
 
 .team-switch-btn {
@@ -381,9 +397,48 @@
 }
 
 .demo-entry-label {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
   font-size: 24rpx;
   color: var(--text-primary);
   font-weight: 600;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.demo-entry-badge {
+  flex: 0 0 auto;
+  min-height: 40rpx;
+  padding: 0 14rpx;
+  border-radius: 999rpx;
+  background: rgba(7, 193, 96, 0.12);
+  color: #0f8f4c;
+  font-size: 20rpx;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+}
+
+.team-demo-badge {
+  flex: 0 0 auto;
+  min-height: 40rpx;
+  padding: 0 14rpx;
+  border-radius: 999rpx;
+  background: rgba(7, 193, 96, 0.12);
+  color: #0f8f4c;
+  font-size: 20rpx;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+}
+
+.demo-entry-name {
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .demo-entry-meta {
@@ -423,16 +478,25 @@
   gap: 6rpx;
 }
 
+.team-option-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.team-option-meta-inline {
+  flex: 0 0 auto;
+  font-size: 20rpx;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
 .team-option-name {
   font-size: 26rpx;
   font-weight: 600;
   color: var(--text-regular);
-}
-
-.team-option-meta {
-  font-size: 18rpx;
-  color: var(--text-secondary);
-  flex-shrink: 0;
 }
 
 .team-option-actions {
