@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
+from app.core.timezone import to_app_timezone
 from app.crud.change_batch import create_change_batch, prune_old_batches
 from app.crud.place import touch_place
 from app.crud.schedule import create_schedule, get_schedule, list_schedules, soft_delete_schedule, update_schedule
@@ -27,12 +28,12 @@ def to_schedule_out(item) -> ScheduleOut:
             "location_latitude": item.location_latitude,
             "location_longitude": item.location_longitude,
             "is_all_day": item.is_all_day,
-            "start_time": item.start_time,
-            "end_time": item.end_time,
+            "start_time": to_app_timezone(item.start_time),
+            "end_time": to_app_timezone(item.end_time),
             "created_by": item.created_by,
             "creator_nickname": getattr(getattr(item, "creator", None), "nickname", None),
             "status": item.status,
-            "created_at": item.created_at,
+            "created_at": to_app_timezone(item.created_at),
         }
     )
 

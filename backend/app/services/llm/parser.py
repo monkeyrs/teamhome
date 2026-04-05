@@ -6,6 +6,7 @@ import re
 import dateparser
 
 from app.core.i18n import PARSER_DATA, RELATIVE_DAY_TERMS
+from app.core.timezone import now_in_app_timezone
 from app.services.llm.openrouter import get_llm_client
 
 
@@ -123,7 +124,7 @@ def _extract_amount(text: str) -> float | None:
 
 
 def _now_local() -> dt.datetime:
-    return dt.datetime.now().astimezone()
+    return now_in_app_timezone()
 
 
 def _iso_no_seconds(value: dt.datetime) -> str:

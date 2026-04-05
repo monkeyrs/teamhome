@@ -200,7 +200,7 @@ class ApiSmokeTests(unittest.TestCase):
         data = response.json()
         self.assertEqual(data["amount"], "28.50")
         self.assertEqual(data["creator_nickname"], "Alice")
-        self.assertEqual(data["occurred_at"], "2026-03-28T09:30:00+00:00")
+        self.assertEqual(data["occurred_at"], "2026-03-28T17:30:00+08:00")
         create_mock.assert_called_once()
         touch_place_mock.assert_called_once_with(self.db, team_id=team_id, name="Office")
 
@@ -250,6 +250,8 @@ class ApiSmokeTests(unittest.TestCase):
         self.assertEqual(data["title"], "Morning Sync")
         self.assertEqual(data["creator_nickname"], "Alice")
         self.assertEqual(data["status"], "pending")
+        self.assertEqual(data["start_time"], "2026-03-29T16:00:00+08:00")
+        self.assertEqual(data["end_time"], "2026-03-29T17:00:00+08:00")
         create_mock.assert_called_once()
         touch_place_mock.assert_called_once_with(self.db, team_id=team_id, name="Meeting Room")
 

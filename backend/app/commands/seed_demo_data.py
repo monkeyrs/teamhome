@@ -17,6 +17,9 @@ def main() -> None:
         f"created_teams={stats.created_teams}",
         f"updated_teams={stats.updated_teams}",
         f"created_memberships={stats.created_memberships}",
+        f"cleared_schedules={stats.cleared_schedules}",
+        f"cleared_finance_records={stats.cleared_finance_records}",
+        f"cleared_places={stats.cleared_places}",
         f"created_schedules={stats.created_schedules}",
         f"created_finance_records={stats.created_finance_records}",
     )

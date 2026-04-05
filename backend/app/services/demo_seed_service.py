@@ -28,6 +28,9 @@ class DemoSeedStats:
     created_teams: int = 0
     updated_teams: int = 0
     created_memberships: int = 0
+    cleared_schedules: int = 0
+    cleared_finance_records: int = 0
+    cleared_places: int = 0
     created_schedules: int = 0
     created_finance_records: int = 0
 
@@ -352,6 +355,22 @@ DEMO_TEAM_SPECS = [
                 "end": "2026-04-04T18:00:00+08:00",
                 "created_by": "demo-teamhome-monke",
             },
+            {
+                "title": "时区问题修正与 i18n 拆分",
+                "description": "统一 GMT+8 展示链路，并把 i18n 大字典继续按语言拆分，降低后续冲突和回归风险。",
+                "location": "远程协作",
+                "start": "2026-04-05T10:00:00+08:00",
+                "end": "2026-04-05T13:00:00+08:00",
+                "created_by": "demo-teamhome-monke",
+            },
+            {
+                "title": "正式版发布",
+                "description": "完成发版前校验、脚本收口、Docker 重启和线上版本发布确认。",
+                "location": "远程协作",
+                "start": "2026-04-05T14:00:00+08:00",
+                "end": "2026-04-05T16:00:00+08:00",
+                "created_by": "demo-teamhome-ning",
+            },
         ],
         "finance": [
             {
@@ -459,6 +478,8 @@ def _ensure_demo_team(db: Session, spec: dict, stats: DemoSeedStats) -> None:
         add_team_member(db, team_id=team.id, user_id=user.id, role=member_spec["role"])
         stats.created_memberships += 1
 
+    _reset_demo_team_seed_data(db, team_id=team.id, stats=stats)
+
     existing_schedules = _existing_schedule_keys(db, team.id)
     existing_places = _existing_place_names(db, team.id)
     for item in spec["schedules"]:
@@ -519,6 +540,16 @@ def _ensure_users(db: Session, members: list[dict]) -> dict[str, User]:
         )
         users[member_spec["openid"]] = user
     return users
+
+
+def _reset_demo_team_seed_data(db: Session, *, team_id, stats: DemoSeedStats) -> None:
+    cleared_schedules = db.query(Schedule).filter(Schedule.team_id == team_id).delete(synchronize_session=False)
+    cleared_finance = db.query(FinanceRecord).filter(FinanceRecord.team_id == team_id).delete(synchronize_session=False)
+    cleared_places = db.query(Place).filter(Place.team_id == team_id).delete(synchronize_session=False)
+    db.commit()
+    stats.cleared_schedules += int(cleared_schedules or 0)
+    stats.cleared_finance_records += int(cleared_finance or 0)
+    stats.cleared_places += int(cleared_places or 0)
 
 
 def _find_existing_demo_team(db: Session, spec: dict, users: dict[str, User]) -> Team | None:

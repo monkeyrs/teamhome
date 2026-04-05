@@ -20,6 +20,7 @@ from app.core.i18n import (
     translate,
     translate_finance_category,
 )
+from app.core.timezone import iso_in_app_timezone, now_in_app_timezone, to_app_timezone
 from app.crud.finance import create_finance_record, find_recent_duplicate_finance_record, list_finance_records
 from app.crud.schedule import create_schedule, list_schedules
 from app.crud.team import can_read_team, can_write_team, is_team_member
@@ -294,7 +295,7 @@ def _normalize_optional_text(value: object) -> str | None:
 def _format_dt(value: dt.datetime | None, locale: str) -> str:
     if value is None:
         return translate(locale, "assistant.not_set")
-    local_value = value.astimezone() if value.tzinfo else value
+    local_value = to_app_timezone(value) or value
     return local_value.strftime("%Y-%m-%d %H:%M")
 
 
@@ -325,7 +326,7 @@ def _parse_iso_datetime(value: str | None) -> dt.datetime | None:
 
 
 def _local_now() -> dt.datetime:
-    return dt.datetime.now().astimezone()
+    return now_in_app_timezone()
 
 
 def _day_range(base: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
@@ -338,7 +339,7 @@ def _dt_sort_key(value: dt.datetime | None) -> float:
     if value is None:
         return float("inf")
     try:
-        normalized = value.astimezone() if value.tzinfo else value.replace(tzinfo=_local_now().tzinfo)
+        normalized = to_app_timezone(value) or value.replace(tzinfo=_local_now().tzinfo)
         return normalized.timestamp()
     except Exception:
         return float("inf")
@@ -581,7 +582,7 @@ def _extract_schedule_query_range(message: str, locale: str) -> tuple[dt.datetim
     parsed = _extract_schedule_slots(text)
     start_time = parsed.get("start_time")
     if start_time:
-        local_start = start_time.astimezone() if start_time.tzinfo else start_time
+        local_start = to_app_timezone(start_time) or start_time
         start, end = _day_range(local_start)
         return start, end, start.strftime("%Y-%m-%d")
     return None, None, translate(locale, "assistant.query_label_recent")
@@ -1190,8 +1191,8 @@ def _query_schedule(
             {
                 "id": str(item.id),
                 "title": item.title,
-                "start_time": item.start_time.isoformat() if item.start_time else None,
-                "end_time": item.end_time.isoformat() if item.end_time else None,
+                "start_time": iso_in_app_timezone(item.start_time),
+                "end_time": iso_in_app_timezone(item.end_time),
                 "location": item.location,
                 "status": item.status,
             }
@@ -1323,7 +1324,7 @@ def _execute_step(db: Session, *, step: dict, team_id: uuid.UUID, user_id: uuid.
                     "amount": _format_amount(duplicate.amount),
                     "type": duplicate.type,
                     "category": duplicate.category,
-                    "occurred_at": duplicate.occurred_at.isoformat() if getattr(duplicate, "occurred_at", None) else None,
+                    "occurred_at": iso_in_app_timezone(getattr(duplicate, "occurred_at", None)),
                     "location": duplicate.location,
                     "note": duplicate.note,
                     "deduplicated": True,
@@ -1357,7 +1358,7 @@ def _execute_step(db: Session, *, step: dict, team_id: uuid.UUID, user_id: uuid.
                 "amount": _format_amount(record.amount),
                 "type": record.type,
                 "category": record.category,
-                "occurred_at": record.occurred_at.isoformat() if getattr(record, "occurred_at", None) else None,
+                "occurred_at": iso_in_app_timezone(getattr(record, "occurred_at", None)),
                 "location": record.location,
                 "note": record.note,
             },
@@ -1389,8 +1390,8 @@ def _execute_step(db: Session, *, step: dict, team_id: uuid.UUID, user_id: uuid.
             "data": {
                 "schedule_id": str(item.id),
                 "title": item.title,
-                "start_time": item.start_time.isoformat() if item.start_time else None,
-                "end_time": item.end_time.isoformat() if item.end_time else None,
+                "start_time": iso_in_app_timezone(item.start_time),
+                "end_time": iso_in_app_timezone(item.end_time),
                 "location": item.location,
                 "description": item.description,
                 "is_all_day": item.is_all_day,

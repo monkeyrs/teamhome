@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.core.i18n import normalize_locale
+from app.core.timezone import iso_in_app_timezone
 from app.crud.change_batch import create_change_batch, prune_old_batches
 from app.crud.finance import (
     create_finance_record,
@@ -34,8 +35,8 @@ router = APIRouter()
 
 
 def to_finance_out(item) -> FinanceOut:
-    created_at = item.created_at.isoformat() if getattr(item, "created_at", None) else None
-    occurred_at = item.occurred_at.isoformat() if getattr(item, "occurred_at", None) else created_at
+    created_at = iso_in_app_timezone(getattr(item, "created_at", None))
+    occurred_at = iso_in_app_timezone(getattr(item, "occurred_at", None)) or created_at
     return FinanceOut.model_validate(
         {
             "id": item.id,

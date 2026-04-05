@@ -8,6 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.i18n import TERM_SETS, translate
+from app.core.timezone import now_in_app_timezone
 from app.models.finance import FinanceRecord
 from app.services.llm.openrouter import get_llm_client
 
@@ -42,7 +43,7 @@ def _fallback_answer(
     if any(term.casefold() in lower_q for term in TERM_SETS["last_month_terms"]) and any(
         term.casefold() in lower_q for term in TERM_SETS["food_terms"]
     ):
-        start, end = _month_range(dt.datetime.now().astimezone())
+        start, end = _month_range(now_in_app_timezone())
         total = (
             db.query(func.coalesce(func.sum(FinanceRecord.amount), 0))
             .filter(

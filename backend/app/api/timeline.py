@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.core.timezone import iso_in_app_timezone, now_in_app_timezone
 from app.core.database import get_db
 from app.crud.finance import list_finance_records
 from app.crud.schedule import list_schedules
@@ -25,7 +26,7 @@ MAX_WINDOW_DAYS = 366
 
 
 def iso_or_none(value: dt.datetime | None) -> str | None:
-    return value.isoformat() if value else None
+    return iso_in_app_timezone(value)
 
 
 def day_key_from_iso(value: str) -> str:
@@ -91,7 +92,7 @@ def build_finance_item(item) -> TimelineItemOut:
 
 
 def group_items(items: list[TimelineItemOut]) -> list[TimelineDayOut]:
-    today_key = dt.datetime.now(dt.timezone.utc).astimezone().date().isoformat()
+    today_key = now_in_app_timezone().date().isoformat()
     grouped: dict[str, list[TimelineItemOut]] = {}
     for item in items:
         grouped.setdefault(day_key_from_iso(item.occur_at), []).append(item)
