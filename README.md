@@ -24,6 +24,19 @@
 
 **Free, open source, and yours to host.** TeamHome is a collaboration tool for teams and families: a shared timeline, an assistant that understands natural language, expense tracking and analysis, and Excel export. Run the FastAPI backend yourself and connect a WeChat Mini Program frontend — no vendor lock-in.
 
+<table align="center">
+  <tr>
+    <td align="center"><img src="docs/media/shot-assistant.png" width="240" alt="TeamHome assistant"></td>
+    <td align="center"><img src="docs/media/shot-timeline.png" width="240" alt="TeamHome unified timeline"></td>
+    <td align="center"><img src="docs/media/shot-analysis.png" width="240" alt="TeamHome analysis"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Assistant</sub></td>
+    <td align="center"><sub>Timeline</sub></td>
+    <td align="center"><sub>Analysis</sub></td>
+  </tr>
+</table>
+
 <a id="features"></a>
 
 ## Features

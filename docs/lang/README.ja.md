@@ -24,6 +24,19 @@
 
 **無料・オープンソース・セルフホスト。** TeamHome はチームと家庭のためのコラボレーションツールです。共通タイムライン、自然言語アシスタント、収支の記録と分析、Excel エクスポートを備えています。バックエンドは FastAPI で自分自身で運用でき、フロントエンドは WeChat ミニプログラムです。ベンダーロックインはありません。
 
+<table align="center">
+  <tr>
+    <td align="center"><img src="../media/shot-assistant.png" width="240" alt="TeamHome アシスタント"></td>
+    <td align="center"><img src="../media/shot-timeline.png" width="240" alt="TeamHome タイムライン"></td>
+    <td align="center"><img src="../media/shot-analysis.png" width="240" alt="TeamHome 分析"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>アシスタント</sub></td>
+    <td align="center"><sub>タイムライン</sub></td>
+    <td align="center"><sub>分析</sub></td>
+  </tr>
+</table>
+
 <a id="features"></a>
 
 ## 機能

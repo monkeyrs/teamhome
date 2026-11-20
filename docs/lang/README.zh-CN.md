@@ -24,6 +24,19 @@
 
 **免费、开源，并且由你自己掌控。** TeamHome 是面向团队与家庭的协作工具：共享时间线、自然语言助手、收支记录与分析、Excel 导出。后端基于 FastAPI，可自行部署；前端是微信小程序，没有厂商锁定。
 
+<table align="center">
+  <tr>
+    <td align="center"><img src="../media/shot-assistant.png" width="240" alt="TeamHome 助手"></td>
+    <td align="center"><img src="../media/shot-timeline.png" width="240" alt="TeamHome 时间线"></td>
+    <td align="center"><img src="../media/shot-analysis.png" width="240" alt="TeamHome 分析"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>助手</sub></td>
+    <td align="center"><sub>时间线</sub></td>
+    <td align="center"><sub>分析</sub></td>
+  </tr>
+</table>
+
 <a id="features"></a>
 
 ## 功能
