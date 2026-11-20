@@ -17,7 +17,7 @@
 </p>
 
 <div align="center" dir="auto">
-<a href="https://ko-fi.com/monkeyrs" rel="nofollow"><img src="https://camo.githubusercontent.com/b75e10cb1f4491296d2530fb49f7b2b59f4c38ec9909172083575da42d23d47a/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f537570706f72745f6d655f6f6e5f4b6f2d2d66692d4631363036313f7374796c653d666f722d7468652d6261646765266c6f676f3d6b6f2d6669266c6f676f436f6c6f723d7768697465" alt="Ko-fi" data-canonical-src="https://img.shields.io/badge/Support_me_on_Ko--fi-F16061?style=for-the-badge&amp;logo=ko-fi&amp;logoColor=white" style="max-width: 100%;"></a>
+<a href="https://ko-fi.com/monkeyrs" rel="nofollow"><img src="https://img.shields.io/badge/Support_me_on_Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Ko-fi" style="max-width: 100%;"></a>
 </div>
 
 <p align="center"><sub><b>English</b> · <a href="docs/lang/README.zh-CN.md">简体中文</a> · <a href="docs/lang/README.ja.md">日本語</a></sub></p>
