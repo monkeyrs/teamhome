@@ -1,90 +1,128 @@
-# TeamHome
+<h1 align="center">TeamHome</h1>
 
-团队 / 家庭协作工具，当前主线能力是“时间线 + 助手 + 分析”。
+<h3 align="center">Bring your team and home together.</h3>
+<p align="center">Plan schedules, track income and expenses, and ask an assistant in natural language — all from a WeChat Mini Program.</p>
 
-## 当前能力
+<p align="center">
+  <a href="#features">Features</a> · <a href="#assistant"><b>Assistant</b></a> ·
+  <a href="#install"><b>Install</b></a> · <a href="#docs">Docs</a> ·
+  <a href="#support-teamhome">Support</a>
+</p>
 
-- 助手页：自然语言创建 / 查询日程与费用
-- 时间线页：统一查看日程、收入、支出
-- 分析页：展示团队活跃度、费用分布等统计信息
-- 数据导出：下载团队相关 Excel 数据
-- 团队能力：创建团队、加入团队、团队密码、成员上限控制
-- 多语言：中文、English、日本語
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/monkeyrs/teamhome" alt="GPL-3.0 license"></a>
+  <a href="https://github.com/monkeyrs/teamhome/commits/main"><img src="https://img.shields.io/github/commit-activity/m/monkeyrs/teamhome" alt="Commit activity"></a>
+  <a href="https://github.com/monkeyrs/teamhome/stargazers"><img src="https://img.shields.io/github/stars/monkeyrs/teamhome" alt="Stars"></a>
+  <a href="https://github.com/monkeyrs/teamhome/issues"><img src="https://img.shields.io/github/issues/monkeyrs/teamhome" alt="Issues"></a>
+</p>
 
-## 目录
+<div align="center" dir="auto">
+<a href="https://ko-fi.com/monkeyrs" rel="nofollow"><img src="https://camo.githubusercontent.com/b75e10cb1f4491296d2530fb49f7b2b59f4c38ec9909172083575da42d23d47a/68747470733a2f2f696d672e736869656c64732e696f2f62616467652f537570706f72745f6d655f6f6e5f4b6f2d2d66692d4631363036313f7374796c653d666f722d7468652d6261646765266c6f676f3d6b6f2d6669266c6f676f436f6c6f723d7768697465" alt="Ko-fi" data-canonical-src="https://img.shields.io/badge/Support_me_on_Ko--fi-F16061?style=for-the-badge&amp;logo=ko-fi&amp;logoColor=white" style="max-width: 100%;"></a>
+</div>
 
-- `backend/`: FastAPI + SQLAlchemy + Alembic + PostgreSQL
-- `frontend/`: 微信小程序
-- `docs/`: 规划、部署、调试、迭代文档
-- `scripts/`: 启动、重启、编码巡检与运维辅助脚本
+<p align="center"><sub><b>English</b> · <a href="docs/lang/README.zh-CN.md">简体中文</a> · <a href="docs/lang/README.ja.md">日本語</a></sub></p>
 
-## 本地开发
+**Free, open source, and yours to host.** TeamHome is a collaboration tool for teams and families: a shared timeline, an assistant that understands natural language, expense tracking and analysis, and Excel export. Run the FastAPI backend yourself and connect a WeChat Mini Program frontend — no vendor lock-in.
 
-### Backend
+<a id="features"></a>
 
-1. 进入后端目录：`cd backend`
-2. 安装依赖：`pip install -r requirements.txt`
-3. 复制配置：把 `.env.example` 复制为 `.env`
-4. 执行迁移：`alembic upgrade head`
-5. 启动 API：`uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
+## Features
+
+| What you get | What it does |
+| --- | --- |
+| **Assistant** | Create and query schedules and expenses in natural language. |
+| **Timeline** | See schedules, income and expenses together in one unified view. |
+| **Analysis** | Team activity, expense distribution and other statistics. |
+| **Export** | Download team data as Excel workbooks. |
+| **Teams** | Create and join teams, with team passwords and member limits. |
+| **Languages** | Chinese, English and Japanese UI copy, routed through i18n. |
+
+<a id="assistant"></a>
+
+## Assistant
+
+The assistant is the main line of development. It can run through the legacy engine or through **LangGraph**, and supports an **OpenAI-compatible** endpoint for natural-language parsing. Model selection, failover and LangSmith tracing are configured through environment variables.
+
+Not sure where to start? The Docker setup runs the API, PostgreSQL and a LangGraph dev server together. See [assistant debugging](docs/langgraph-debug.md) for the tracing chain.
+
+<a id="install"></a>
+
+## Install
 
 ### Docker
 
-在项目根目录运行：
+From the repository root:
 
 ```bash
 docker compose up -d --build
 ```
 
-生产部署使用：
+For production:
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-### Frontend
+<details open>
+<summary><b>Run the backend locally</b></summary>
 
-1. 用微信开发者工具打开 `frontend/`
-2. 本地联调时可用 `frontend/config/local.js` 覆盖 API 地址
-3. 若本地调试，开发者工具里关闭域名校验
+```bash
+cd backend
+pip install -r requirements.txt
+cp .env.example .env
+alembic upgrade head
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
 
-默认正式配置见 [frontend/config/default.js](C:/Users/monke/Desktop/WeCount/teamhome/frontend/config/default.js)。
+Set `DATABASE_URL`, `JWT_SECRET` and the other values in `backend/.env` before using it. The example file documents every supported option.
 
-## 文档入口
+</details>
 
-- [docs/README.md](C:/Users/monke/Desktop/WeCount/teamhome/docs/README.md)：统一文档索引
-- [docs/iteration-history.md](C:/Users/monke/Desktop/WeCount/teamhome/docs/iteration-history.md)：迭代历史
-- [docs/onboarding-content.md](C:/Users/monke/Desktop/WeCount/teamhome/docs/onboarding-content.md)：新手引导内容草案
+<details>
+<summary><b>Connect the WeChat Mini Program</b></summary>
 
-## 开发约定
+1. Open `frontend/` with WeChat DevTools.
+2. Override the API address in `frontend/config/local.js` for local development.
+3. Disable domain-name checking in DevTools while debugging locally.
 
-- 页面文案统一走 i18n。
-- 后端架构变更时，同步更新根目录 `scripts/` 下的启动和重启脚本。
-- 前后端源文件统一使用 UTF-8 无 BOM。
-- JSON 请求 / 响应显式使用 `charset=UTF-8`。
-- 数据库使用 UTF-8 / utf8mb4，不依赖 BOM。
-- 正式环境遵循安全预检，按现有脚本先校验再启动。
+The default API address lives in [frontend/config/default.js](frontend/config/default.js).
 
-## 编码巡检
+</details>
 
-项目内置脚本：
+On Windows, `scripts/start-backend.ps1` and `scripts/restart-backend.ps1` are the recommended local helpers.
 
-- 检查：`python scripts/ensure_utf8.py --check --root .`
-- 修复：`python scripts/ensure_utf8.py --root .`
+<a id="docs"></a>
 
-## 2026-04-04 更新
+## Docs
 
-- 小程序工程根目录继续以 `frontend/` 为准，全局样式入口为 `frontend/app.wxss`。
-- 时间线页继续使用统一读模型；删除、批量删除、复制新增后，列表会按最新数据重新吸附并刷新锚点。
-- 助手首页底部的 LangGraph 示意图继续作为主展示入口，调试与验证请优先参考 [docs/langgraph-debug.md](C:/Users/monke/Desktop/WeCount/teamhome/docs/langgraph-debug.md)。
-- 演示团队 `teamhome开发` 已补充 2026-04-03 与 2026-04-04 的迭代事项，重启后端会自动同步 demo seed。
-- Windows 本地启动推荐使用 `scripts/start-backend.ps1`，重启推荐使用 `scripts/restart-backend.ps1`。
+- [Documentation index](docs/README.md)
+- [Iteration history](docs/iteration-history.md)
+- [Onboarding content](docs/onboarding-content.md)
+- [Assistant design baseline](docs/assistant-ai-plan.md)
+- [LangGraph debugging](docs/langgraph-debug.md)
+- [Deployment guide](docs/deploy-monkeyrs.md)
 
-## 发版前确认
+## Project layout
 
-- `backend/.env` 或服务器上的生产环境变量里，确认 `ASSISTANT_ENGINE=langgraph`。
-- 正式环境确认 `ENABLE_DEBUG_ENDPOINTS=false`，不要带这轮临时调试日志和调试入口上线。
-- 正式环境确认 `ALLOW_INSECURE_DEV_AUTH=false`、`ENVIRONMENT=production`、`JWT_SECRET` 为非默认强密钥。
-- 服务器部署步骤与检查项请直接参考 [docs/deploy-monkeyrs.md](C:/Users/monke/Desktop/WeCount/teamhome/docs/deploy-monkeyrs.md)。
+- `backend/` — FastAPI, SQLAlchemy, Alembic and PostgreSQL.
+- `frontend/` — WeChat Mini Program.
+- `docs/` — Planning, deployment, debugging and iteration notes.
+- `scripts/` — Startup, restart, encoding checks and operations helpers.
 
-脚本会把源码和项目文档统一为 UTF-8 无 BOM，并跳过 `.venv`、`node_modules`、`.git` 等目录。
+## Development notes
+
+- All UI copy goes through i18n.
+- Backend architecture changes also require updating the startup and restart scripts under `scripts/`.
+- Source files use UTF-8 without BOM; JSON responses and requests declare `charset=UTF-8`.
+- Run the encoding check with `python scripts/ensure_utf8.py --check --root .`, and fix with `python scripts/ensure_utf8.py --root .`.
+- For production, set `ASSISTANT_ENGINE=langgraph`, `ENABLE_DEBUG_ENDPOINTS=false`, `ALLOW_INSECURE_DEV_AUTH=false`, `ENVIRONMENT=production`, and a strong non-default `JWT_SECRET`.
+
+<a id="support-teamhome"></a>
+
+## Support TeamHome
+
+If TeamHome is useful to you, you can support development with a coffee.
+
+<a href="https://ko-fi.com/monkeyrs" rel="nofollow"><img src="https://img.shields.io/badge/Support_me_on_Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white" alt="Support me on Ko-fi"></a>
+
+[GPL-3.0 license](LICENSE) · [Report an issue](https://github.com/monkeyrs/teamhome/issues)

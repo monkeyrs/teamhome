@@ -1,6 +1,6 @@
 # TeamHome 迭代历史
 
-> 用途：面向项目成员的阶段总结文档。若要生成示例团队种子数据，请优先参考 [onboarding-content.md](C:/Users/monke/Desktop/WeCount/teamhome/docs/onboarding-content.md) 里的短时间线版本。
+> 用途：面向项目成员的阶段总结文档。若要生成示例团队种子数据，请优先参考 [onboarding-content.md](onboarding-content.md) 里的短时间线版本。
 
 ## 说明
 
