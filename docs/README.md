@@ -7,7 +7,7 @@
 1. [README.md](../README.md)
 2. [iteration-history.md](iteration-history.md)
 3. [onboarding-content.md](onboarding-content.md)
-4. [deploy-monkeyrs.md](deploy-monkeyrs.md)
+4. [deployment.md](deployment.md)
 5. [langgraph-debug.md](langgraph-debug.md)
 
 ## 语言版本
@@ -33,9 +33,9 @@
 
 ### 部署与运维
 
-- [deploy-monkeyrs.md](deploy-monkeyrs.md)
-  用途：正式部署 `your-domain.example`、配置 HTTPS、运行生产容器，并包含发版前配置检查与发版后验证清单。
-- [nginx-monkeyrs.conf](nginx-monkeyrs.conf)
+- [deployment.md](deployment.md)
+  用途：通用部署建议，配置 HTTPS、运行生产容器，并包含发版前配置检查与发版后验证清单。
+- [nginx.conf.example](nginx.conf.example)
   用途：Nginx 参考配置，配合部署文档一起使用。
 
 ### 调试与联调

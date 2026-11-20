@@ -1,10 +1,10 @@
-# `your-domain.example` 部署建议
+# TeamHome 部署建议
 
 > 状态说明：本文档描述当前推荐的正式部署路径，对应现有 `docker-compose.prod.yml` 和 `scripts/server-up.sh`。如后端架构继续调整，务必同步更新部署脚本和本文档。
 
 推荐使用同一个主域名拆成两个入口：
 
-- `https://your-domain.example`：个人网站
+- `https://your-domain.example`：站点首页（可选）
 - `https://your-domain.example/xcx`：微信小程序后端 API
 
 这样做的原因：
@@ -22,14 +22,14 @@
 
 ## 服务器目录
 
-- 代码目录：`/root/teamhome`
-- 个人网站目录：`/var/www/your-domain.example`
+- 代码目录：`/path/to/teamhome`
+- 站点目录：`/var/www/your-domain.example`
 - 证书校验目录：`/var/www/certbot`
 
 ## 首次启动后端
 
 ```bash
-cd /root/teamhome
+cd /path/to/teamhome
 docker compose -f docker-compose.prod.yml up -d db
 docker compose -f docker-compose.prod.yml build api langgraph
 docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
@@ -41,7 +41,7 @@ curl http://127.0.0.1:8000/openapi.json
 ## 后续更新
 
 ```bash
-bash /root/teamhome/scripts/server-up.sh
+bash /path/to/teamhome/scripts/server-up.sh
 ```
 
 `server-up.sh` 当前会执行：
@@ -73,9 +73,9 @@ bash /root/teamhome/scripts/server-up.sh
 推荐在服务器上按这个顺序执行：
 
 ```bash
-cd /root/teamhome
+cd /path/to/teamhome
 git pull origin main
-bash /root/teamhome/scripts/server-up.sh
+bash /path/to/teamhome/scripts/server-up.sh
 ```
 
 `server-up.sh` 会自动执行：
@@ -102,7 +102,7 @@ bash /root/teamhome/scripts/server-up.sh
 
 ## Nginx
 
-把 `docs/nginx-monkeyrs.conf` 放到服务器的 `/etc/nginx/conf.d/monkeyrs.conf`
+把 `docs/nginx.conf.example` 放到服务器的 `/etc/nginx/conf.d/teamhome.conf`
 
 然后执行：
 
@@ -137,6 +137,6 @@ certbot --nginx -d your-domain.example -d www.your-domain.example
 
 ## 备注
 
-- 正式环境默认 API 入口是 `https://your-domain.example/xcx`
-- 本地联调请用前端本地覆盖配置，不要改动仓库默认正式地址
+- 仓库中的正式 API 入口是占位符 `https://your-domain.example/xcx`，请替换为你的实际域名
+- 本地联调请用 `frontend/config/local.js`（模板见 `frontend/config/local.example.js`），不要改动默认配置
 - 生产部署前先检查 `backend/.env` 中的 `ENVIRONMENT`、`JWT_SECRET`、`CORS_ALLOW_ORIGINS`、微信配置和调试开关

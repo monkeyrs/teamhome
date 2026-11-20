@@ -85,7 +85,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 2. 本地联调时在 `frontend/config/local.js` 覆盖 API 地址。
 3. 本地调试时在开发者工具里关闭域名校验。
 
-默认正式配置见 [frontend/config/default.js](../../frontend/config/default.js)。
+仓库里是占位配置：[frontend/config/default.js](../../frontend/config/default.js) 的 API 地址是 `https://your-domain.example/xcx`，`project.config.json` / `frontend/project.config.json` 的 AppID 是 `touristappid`。构建或上传前请替换成你自己的值。
 
 </details>
 
@@ -100,7 +100,7 @@ Windows 本地启动推荐使用 `scripts/start-backend.ps1`，重启推荐使�
 - [新手引导内容](../onboarding-content.md)
 - [助手设计基线](../assistant-ai-plan.md)
 - [LangGraph 调试](../langgraph-debug.md)
-- [部署指南](../deploy-monkeyrs.md)
+- [部署指南](../deployment.md)
 
 ## 项目结构
 

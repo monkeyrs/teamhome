@@ -85,7 +85,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 2. ローカル開発では `frontend/config/local.js` で API アドレスを上書きします。
 3. ローカルデバッグ時は DevTools でドメイン検証を無効にします。
 
-デフォルトの API アドレスは [frontend/config/default.js](../../frontend/config/default.js) にあります。
+リポジトリ内はプレースホルダです：[frontend/config/default.js](../../frontend/config/default.js) の API アドレスは `https://your-domain.example/xcx`、`project.config.json` / `frontend/project.config.json` の AppID は `touristappid` です。ビルド・アップロード前に自分の値へ置き換えてください。
 
 </details>
 
@@ -100,7 +100,7 @@ Windows では `scripts/start-backend.ps1` と `scripts/restart-backend.ps1` の
 - [オンボーディング内容](../onboarding-content.md)
 - [アシスタント設計ベースライン](../assistant-ai-plan.md)
 - [LangGraph デバッグ](../langgraph-debug.md)
-- [デプロイガイド](../deploy-monkeyrs.md)
+- [デプロイガイド](../deployment.md)
 
 ## プロジェクト構成
 

@@ -173,8 +173,8 @@
 
 配套文档：
 
-- `docs/deploy-monkeyrs.md`
-- `docs/nginx-monkeyrs.conf`
+- `docs/deployment.md`
+- `docs/nginx.conf.example`
 
 阶段成果：
 

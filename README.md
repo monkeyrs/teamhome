@@ -85,7 +85,7 @@ Set `DATABASE_URL`, `JWT_SECRET` and the other values in `backend/.env` before u
 2. Override the API address in `frontend/config/local.js` for local development.
 3. Disable domain-name checking in DevTools while debugging locally.
 
-The default API address lives in [frontend/config/default.js](frontend/config/default.js).
+The repository uses placeholder values: the API address in [frontend/config/default.js](frontend/config/default.js) is `https://your-domain.example/xcx`, and the AppID in `project.config.json` / `frontend/project.config.json` is `touristappid`. Replace both with your own values before building or uploading.
 
 </details>
 
@@ -100,7 +100,7 @@ On Windows, `scripts/start-backend.ps1` and `scripts/restart-backend.ps1` are th
 - [Onboarding content](docs/onboarding-content.md)
 - [Assistant design baseline](docs/assistant-ai-plan.md)
 - [LangGraph debugging](docs/langgraph-debug.md)
-- [Deployment guide](docs/deploy-monkeyrs.md)
+- [Deployment guide](docs/deployment.md)
 
 ## Project layout
 
